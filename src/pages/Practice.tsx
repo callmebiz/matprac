@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { questionsByTopic } from '../data/questions'
 import { topicById } from '../data/topics'
 import { useStatsStore } from '../store/useStatsStore'
-import { useSettingsStore } from '../store/useSettingsStore'
+import { useSettingsStore, isAiTutorReady } from '../store/useSettingsStore'
 import { buildSession } from '../lib/srs'
 import { getLocalProvider, LlmError } from '../llm'
 import { Flashcard } from '../components/Flashcard'
@@ -16,7 +16,7 @@ export function Practice() {
   const navigate = useNavigate()
   const progress = useStatsStore((s) => s.progress)
   const recordAttempt = useStatsStore((s) => s.recordAttempt)
-  const aiTutorEnabled = useSettingsStore((s) => s.aiTutorEnabled)
+  const aiTutorEnabled = useSettingsStore(isAiTutorReady)
   const endpoint = useSettingsStore((s) => s.endpoint)
   const model = useSettingsStore((s) => s.model)
 

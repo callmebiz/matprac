@@ -13,6 +13,12 @@ export function Settings() {
   function saveAndTest() {
     setEndpoint(draftEndpoint)
     setModel(draftModel)
+
+    if (!draftEndpoint.trim() || !draftModel.trim()) {
+      setTest({ state: 'error', message: 'Enter both an endpoint and a model name first.' })
+      return
+    }
+
     setTest({ state: 'testing' })
     testLocalConnection(draftEndpoint, draftModel)
       .then(() => setTest({ state: 'ok' }))

@@ -3,7 +3,7 @@ import type { Question } from '../types'
 import { MathText } from './MathText'
 import { topicTheme } from '../lib/theme'
 import { topicById } from '../data/topics'
-import { useSettingsStore } from '../store/useSettingsStore'
+import { useSettingsStore, isAiTutorReady } from '../store/useSettingsStore'
 import { getLocalProvider, LlmError } from '../llm'
 import type { GradeResult } from '../llm'
 
@@ -28,7 +28,7 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
   const [gradeResult, setGradeResult] = useState<GradeResult | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
 
-  const aiTutorEnabled = useSettingsStore((s) => s.aiTutorEnabled)
+  const aiTutorEnabled = useSettingsStore(isAiTutorReady)
   const endpoint = useSettingsStore((s) => s.endpoint)
   const model = useSettingsStore((s) => s.model)
 

@@ -10,12 +10,16 @@ interface SettingsStore {
   setModel: (model: string) => void
 }
 
+export function isAiTutorReady(state: Pick<SettingsStore, 'aiTutorEnabled' | 'endpoint' | 'model'>): boolean {
+  return state.aiTutorEnabled && state.endpoint.trim() !== '' && state.model.trim() !== ''
+}
+
 export const useSettingsStore = create<SettingsStore>()(
   persist(
     (set) => ({
       aiTutorEnabled: false,
-      endpoint: 'http://localhost:11434/v1',
-      model: 'llama3.1',
+      endpoint: '',
+      model: '',
       setAiTutorEnabled: (aiTutorEnabled) => set({ aiTutorEnabled }),
       setEndpoint: (endpoint) => set({ endpoint }),
       setModel: (model) => set({ model }),
