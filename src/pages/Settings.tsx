@@ -76,6 +76,12 @@ export function Settings() {
         >
           {test.state === 'testing' ? 'Testing…' : 'Save & test connection'}
         </button>
+        {test.state === 'testing' && (
+          <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-2">
+            First request after starting the model server can take a while — it has to load the model into
+            memory. Subsequent ones are fast.
+          </p>
+        )}
 
         {test.state === 'ok' && (
           <p className="text-sm text-emerald-500 font-medium mt-3">✓ Connected — the model responded.</p>

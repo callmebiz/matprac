@@ -16,7 +16,7 @@ async function chatCompletion(
   endpoint: string,
   model: string,
   messages: ChatMessage[],
-  { temperature = 0.4, timeoutMs = 30_000 }: { temperature?: number; timeoutMs?: number } = {},
+  { temperature = 0.4, timeoutMs = 60_000 }: { temperature?: number; timeoutMs?: number } = {},
 ): Promise<string> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -82,12 +82,9 @@ Respond with ONLY a raw JSON object, no markdown fences, no commentary, in this 
 Use LaTeX ($...$ inline, $$...$$ block) for any math. Target difficulty ${difficulty} of 3. Prefer these subtopics if relevant: ${subtopics.join(', ')}. Make it precise and exam-style; avoid restating a generic textbook definition verbatim.`
 
 export async function testLocalConnection(endpoint: string, model: string): Promise<void> {
-  const content = await chatCompletion(
-    endpoint,
-    model,
-    [{ role: 'user', content: 'Reply with the single word: OK' }],
-    { timeoutMs: 10_000 },
-  )
+  // Generous timeout: the first request after starting a local model server often has to
+  // cold-load the model into memory/VRAM before it can respond, which can take a while.
+  const content = await chatCompletion(endpoint, model, [{ role: 'user', content: 'Reply with the single word: OK' }])
   if (!content.trim()) {
     throw new LlmError('The local model returned an empty response.', 'parse')
   }
