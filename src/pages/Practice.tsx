@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { questionsByTopic } from '../data/questions'
+import { topicById } from '../data/topics'
 import { useStatsStore } from '../store/useStatsStore'
+import { useSettingsStore } from '../store/useSettingsStore'
 import { buildSession } from '../lib/srs'
+import { getLocalProvider, LlmError } from '../llm'
 import { Flashcard } from '../components/Flashcard'
-import type { TopicId } from '../types'
+import type { Question, TopicId } from '../types'
 
 const SESSION_SIZE = 15
 
@@ -13,10 +16,13 @@ export function Practice() {
   const navigate = useNavigate()
   const progress = useStatsStore((s) => s.progress)
   const recordAttempt = useStatsStore((s) => s.recordAttempt)
+  const aiTutorEnabled = useSettingsStore((s) => s.aiTutorEnabled)
+  const endpoint = useSettingsStore((s) => s.endpoint)
+  const model = useSettingsStore((s) => s.model)
 
   const topicIds = (location.state as { topicIds?: TopicId[] } | null)?.topicIds ?? null
 
-  const [session] = useState(() => {
+  const [session, setSession] = useState(() => {
     if (!topicIds || topicIds.length === 0) return []
     const pool = topicIds.flatMap((id) => questionsByTopic.get(id) ?? [])
     return buildSession(pool, progress, Math.min(SESSION_SIZE, pool.length))
@@ -24,6 +30,8 @@ export function Practice() {
 
   const [index, setIndex] = useState(0)
   const [sessionCorrect, setSessionCorrect] = useState(0)
+  const [generating, setGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState('')
 
   const current = session[index]
   const done = index >= session.length
@@ -33,6 +41,44 @@ export function Practice() {
     recordAttempt(current.id, correct)
     if (correct) setSessionCorrect((c) => c + 1)
     setIndex((i) => i + 1)
+  }
+
+  async function handleGenerate() {
+    if (!topicIds || topicIds.length === 0) return
+    setGenerating(true)
+    setGenerateError('')
+    try {
+      const topicId = topicIds[Math.floor(Math.random() * topicIds.length)]
+      const topic = topicById.get(topicId)
+      const subtopics = [...new Set((questionsByTopic.get(topicId) ?? []).map((q) => q.subtopic))]
+      const difficulty = (Math.floor(Math.random() * 3) + 1) as 1 | 2 | 3
+
+      const generated = await getLocalProvider(endpoint, model).generateQuestion({
+        topicName: topic?.name ?? topicId,
+        subtopics,
+        difficulty,
+      })
+
+      const newQuestion: Question = {
+        id: `gen-${Date.now()}`,
+        topicId,
+        subtopic: 'AI-generated',
+        difficulty,
+        prompt: generated.prompt,
+        answer: generated.answer,
+        explanation: generated.explanation,
+      }
+
+      setSession((s) => {
+        const next = [...s]
+        next.splice(index, 0, newQuestion)
+        return next
+      })
+    } catch (err) {
+      setGenerateError(err instanceof LlmError ? err.message : 'Could not generate a question.')
+    } finally {
+      setGenerating(false)
+    }
   }
 
   if (!topicIds || session.length === 0) {
@@ -62,15 +108,28 @@ export function Practice() {
         <div className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
           {done ? session.length : index + 1} / {session.length}
         </div>
-        <div className="w-9" />
+        {aiTutorEnabled && !done ? (
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            aria-label="Generate a new question"
+            className="h-9 w-9 rounded-full flex items-center justify-center text-indigo-500 bg-indigo-500/10 disabled:opacity-40"
+          >
+            {generating ? '…' : '✨'}
+          </button>
+        ) : (
+          <div className="w-9" />
+        )}
       </div>
 
-      <div className="h-1.5 rounded-full bg-neutral-900/10 dark:bg-white/10 mb-6 overflow-hidden">
+      <div className="h-1.5 rounded-full bg-neutral-900/10 dark:bg-white/10 mb-3 overflow-hidden">
         <div
           className="h-full rounded-full bg-indigo-600 transition-all duration-300"
           style={{ width: `${(Math.min(index, session.length) / session.length) * 100}%` }}
         />
       </div>
+
+      {generateError && <p className="text-xs text-red-500 mb-3">{generateError}</p>}
 
       {done ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center gap-4">

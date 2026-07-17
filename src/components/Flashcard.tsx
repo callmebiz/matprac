@@ -3,6 +3,9 @@ import type { Question } from '../types'
 import { MathText } from './MathText'
 import { topicTheme } from '../lib/theme'
 import { topicById } from '../data/topics'
+import { useSettingsStore } from '../store/useSettingsStore'
+import { getLocalProvider, LlmError } from '../llm'
+import type { GradeResult } from '../llm'
 
 interface FlashcardProps {
   question: Question
@@ -11,21 +14,56 @@ interface FlashcardProps {
 
 const difficultyDots = { 1: 1, 2: 2, 3: 3 } as const
 
+type CardState = 'question' | 'grading' | 'graded' | 'revealed' | 'error'
+
+const verdictStyle: Record<GradeResult['verdict'], { label: string; className: string }> = {
+  correct: { label: 'Correct', className: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' },
+  partial: { label: 'Partially right', className: 'text-amber-500 bg-amber-500/10 border-amber-500/30' },
+  incorrect: { label: 'Not quite', className: 'text-red-500 bg-red-500/10 border-red-500/30' },
+}
+
 export function Flashcard({ question, onGrade }: FlashcardProps) {
-  const [revealed, setRevealed] = useState(false)
+  const [state, setState] = useState<CardState>('question')
+  const [typedAnswer, setTypedAnswer] = useState('')
+  const [gradeResult, setGradeResult] = useState<GradeResult | null>(null)
+  const [errorMessage, setErrorMessage] = useState('')
+
+  const aiTutorEnabled = useSettingsStore((s) => s.aiTutorEnabled)
+  const endpoint = useSettingsStore((s) => s.endpoint)
+  const model = useSettingsStore((s) => s.model)
+
   const theme = topicTheme[question.topicId]
   const topic = topicById.get(question.topicId)
 
   function grade(correct: boolean) {
     onGrade(correct)
-    setRevealed(false)
+    setState('question')
+    setTypedAnswer('')
+    setGradeResult(null)
   }
+
+  async function checkAnswer() {
+    setState('grading')
+    try {
+      const result = await getLocalProvider(endpoint, model).gradeAnswer({
+        prompt: question.prompt,
+        expectedAnswer: question.answer,
+        explanation: question.explanation,
+        userAnswer: typedAnswer,
+      })
+      setGradeResult(result)
+      setState('graded')
+    } catch (err) {
+      setErrorMessage(err instanceof LlmError ? err.message : 'Something went wrong reaching the model.')
+      setState('error')
+    }
+  }
+
+  const showAnswerBlock = state === 'graded' || state === 'revealed'
 
   return (
     <div className="flex flex-col gap-4">
-      <div
-        className={`rounded-3xl border ${theme.border} ${theme.bgSoft} p-6 min-h-[280px] flex flex-col`}
-      >
+      <div className={`rounded-3xl border ${theme.border} ${theme.bgSoft} p-6 min-h-[280px] flex flex-col`}>
         <div className="flex items-start justify-between gap-3 mb-4">
           <span className={`text-xs font-semibold uppercase tracking-wide ${theme.text}`}>
             {topic?.shortName} · {question.subtopic}
@@ -48,8 +86,36 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
           </div>
         </div>
 
-        {revealed && (
+        {aiTutorEnabled && state === 'question' && (
+          <textarea
+            value={typedAnswer}
+            onChange={(e) => setTypedAnswer(e.target.value)}
+            placeholder="Type your answer…"
+            rows={3}
+            className="mt-4 w-full rounded-xl border border-neutral-900/10 dark:border-white/10 bg-white/60 dark:bg-black/20 px-3.5 py-2.5 text-sm text-neutral-900 dark:text-neutral-100 resize-none"
+          />
+        )}
+
+        {state === 'graded' && gradeResult && (
           <div className="mt-5 pt-5 border-t border-neutral-900/10 dark:border-white/10 text-left">
+            <div className={`inline-block rounded-full border px-3 py-1 text-xs font-semibold mb-3 ${verdictStyle[gradeResult.verdict].className}`}>
+              {verdictStyle[gradeResult.verdict].label}
+            </div>
+            <div className="text-sm text-neutral-700 dark:text-neutral-300 mb-3">
+              <MathText text={gradeResult.feedback} />
+            </div>
+            {gradeResult.followUp && (
+              <div className="text-sm text-neutral-500 dark:text-neutral-400 italic mb-3">
+                <MathText text={gradeResult.followUp} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {showAnswerBlock && (
+          <div
+            className={`text-left ${state === 'graded' ? '' : 'mt-5 pt-5 border-t border-neutral-900/10 dark:border-white/10'}`}
+          >
             <div className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 mb-1">Answer</div>
             <div className="text-base text-neutral-900 dark:text-neutral-100 mb-3">
               <MathText text={question.answer} />
@@ -64,16 +130,67 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
             )}
           </div>
         )}
+
+        {state === 'error' && (
+          <div className="mt-5 pt-5 border-t border-neutral-900/10 dark:border-white/10 text-left">
+            <p className="text-sm text-red-500">{errorMessage}</p>
+          </div>
+        )}
       </div>
 
-      {!revealed ? (
+      {state === 'question' &&
+        (aiTutorEnabled ? (
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={checkAnswer}
+              disabled={!typedAnswer.trim()}
+              className="w-full rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-semibold py-4 text-base active:scale-[0.98] transition-transform disabled:opacity-40"
+            >
+              Check answer
+            </button>
+            <button
+              onClick={() => setState('revealed')}
+              className="text-sm text-neutral-500 dark:text-neutral-400 font-medium py-1"
+            >
+              Skip — just show me the answer
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setState('revealed')}
+            className="w-full rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-semibold py-4 text-base active:scale-[0.98] transition-transform"
+          >
+            Show answer
+          </button>
+        ))}
+
+      {state === 'grading' && (
         <button
-          onClick={() => setRevealed(true)}
-          className="w-full rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-semibold py-4 text-base active:scale-[0.98] transition-transform"
+          disabled
+          className="w-full rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-semibold py-4 text-base opacity-60"
         >
-          Show answer
+          Grading…
         </button>
-      ) : (
+      )}
+
+      {state === 'error' && (
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => setState('question')}
+            className="rounded-2xl border border-neutral-900/10 dark:border-white/10 font-semibold py-4 text-base"
+          >
+            Try again
+          </button>
+          <button
+            onClick={() => setState('revealed')}
+            className="rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-semibold py-4 text-base"
+          >
+            Show answer
+          </button>
+        </div>
+      )}
+
+      {showAnswerBlock && (
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={() => grade(false)}
