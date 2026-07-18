@@ -50,32 +50,46 @@ async function chatCompletion(
   return content
 }
 
-function extractJson<T>(text: string): T {
-  const start = text.indexOf('{')
-  const end = text.lastIndexOf('}')
-  if (start === -1 || end === -1 || end < start) {
-    throw new LlmError('Could not find JSON in the model response.', 'parse')
+/**
+ * Extracts a labeled field (e.g. "FEEDBACK: ...") from free-form model output. Deliberately not
+ * JSON: asking a small local model to nest real LaTeX (backslash-heavy) inside a JSON string is
+ * fragile -- `\dfrac`, `\sqrt`, etc. aren't valid JSON escapes, and models routinely emit them
+ * unescaped, breaking JSON.parse. Plain tagged text sidesteps that entirely.
+ */
+function extractField(text: string, field: string, laterFields: string[]): string | undefined {
+  const startMatch = new RegExp(`${field}\\s*:\\s*`, 'i').exec(text)
+  if (!startMatch) return undefined
+
+  const valueStart = startMatch.index + startMatch[0].length
+  let valueEnd = text.length
+  for (const later of laterFields) {
+    const laterMatch = new RegExp(`\\n\\s*${later}\\s*:`, 'i').exec(text.slice(valueStart))
+    if (laterMatch) valueEnd = Math.min(valueEnd, valueStart + laterMatch.index)
   }
-  try {
-    return JSON.parse(text.slice(start, end + 1)) as T
-  } catch {
-    throw new LlmError('Could not parse JSON from the model response.', 'parse')
-  }
+  return text.slice(valueStart, valueEnd).trim()
 }
 
 const GRADE_SYSTEM_PROMPT = `You are a strict but encouraging tutor grading a technical flashcard answer for a data scientist studying the math behind AI/ML. Compare the student's typed answer to the expected answer and explanation.
 
-Respond with ONLY a raw JSON object, no markdown fences, no commentary, in this exact shape:
-{"verdict": "correct" | "partial" | "incorrect", "feedback": "2-3 sentence explanation of what was right/wrong", "followUp": "one short question that deepens understanding, or omit this key entirely if not useful"}
+Judge mathematical and conceptual correctness, not exact formatting. Treat equivalent notations as identical -- "n x m", "nxm", "n*m", "(n × m)", and "n by m" all mean the same thing; missing parentheses, spacing, or writing "x" instead of "×" never make an answer wrong on their own. Only grade "partial" or "incorrect" if the answer is actually mathematically or conceptually wrong or incomplete.
 
-Preserve LaTeX ($...$ inline, $$...$$ block) faithfully if you use math notation in feedback or followUp.`
+Respond in EXACTLY this format and nothing else -- no markdown fences, no extra commentary before or after:
+
+VERDICT: correct, partial, or incorrect
+FEEDBACK: 2-3 sentences on what was right or wrong
+FOLLOWUP: one short question that deepens understanding (omit this line entirely if it wouldn't add anything)
+
+Use LaTeX ($...$ inline, $$...$$ block) for any math in FEEDBACK or FOLLOWUP, written as plain, normal LaTeX -- do not escape backslashes.`
 
 const GENERATE_SYSTEM_PROMPT = (topicName: string, subtopics: string[], difficulty: number) => `You are writing a new flashcard question for a math practice app aimed at a data scientist with a master's in AI engineering, staying sharp on "${topicName}".
 
-Respond with ONLY a raw JSON object, no markdown fences, no commentary, in this exact shape:
-{"prompt": "the question text", "answer": "the correct answer", "explanation": "1-2 sentences on why, or the key insight"}
+Respond in EXACTLY this format and nothing else -- no markdown fences, no extra commentary before or after:
 
-Use LaTeX ($...$ inline, $$...$$ block) for any math. Target difficulty ${difficulty} of 3. Prefer these subtopics if relevant: ${subtopics.join(', ')}. Make it precise and exam-style; avoid restating a generic textbook definition verbatim.`
+PROMPT: the question text
+ANSWER: the correct answer
+EXPLANATION: 1-2 sentences on why, or the key insight
+
+Use LaTeX ($...$ inline, $$...$$ block) for any math, written as plain, normal LaTeX -- do not escape backslashes. Target difficulty ${difficulty} of 3. Prefer these subtopics if relevant: ${subtopics.join(', ')}. Make it precise and exam-style; avoid restating a generic textbook definition verbatim.`
 
 const CHAT_SYSTEM_PROMPT = `You are a sharp, friendly tutor helping a data scientist with a master's in AI engineering go deeper on the math behind ML. You're mid-conversation about a specific flashcard they just answered. Answer their follow-up directly and technically -- don't repeat things already established in the conversation. Use LaTeX ($...$ inline, $$...$$ block) for any math. Keep replies focused: a few sentences unless the question genuinely calls for more.`
 
@@ -109,18 +123,33 @@ export class LocalProvider implements LlmProvider {
       .filter(Boolean)
       .join('\n')
 
-    const content = await chatCompletion(this.endpoint, this.model, [
-      { role: 'system', content: GRADE_SYSTEM_PROMPT },
-      { role: 'user', content: userPrompt },
-    ])
+    const content = await chatCompletion(
+      this.endpoint,
+      this.model,
+      [
+        { role: 'system', content: GRADE_SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+      { temperature: 0.2 },
+    )
 
-    const parsed = extractJson<{ verdict?: string; feedback?: string; followUp?: string }>(content)
-    const verdict = parsed.verdict === 'correct' || parsed.verdict === 'partial' || parsed.verdict === 'incorrect' ? parsed.verdict : 'partial'
+    const verdictField = extractField(content, 'VERDICT', ['FEEDBACK', 'FOLLOWUP'])
+    const feedbackField = extractField(content, 'FEEDBACK', ['FOLLOWUP'])
+    const followUpField = extractField(content, 'FOLLOWUP', [])
+
+    // If the model ignored the format entirely, fall back to showing its raw reply as feedback
+    // rather than surfacing a parse error -- a degraded but still useful result.
+    if (verdictField === undefined && feedbackField === undefined) {
+      return { verdict: 'partial', feedback: content.trim() || 'The model did not return feedback.' }
+    }
+
+    const v = (verdictField ?? '').toLowerCase()
+    const verdict = v.includes('incorrect') ? 'incorrect' : v.includes('partial') ? 'partial' : v.includes('correct') ? 'correct' : 'partial'
 
     return {
       verdict,
-      feedback: parsed.feedback ?? 'The model did not return feedback.',
-      followUp: parsed.followUp,
+      feedback: feedbackField || 'The model did not return feedback.',
+      followUp: followUpField || undefined,
     }
   }
 
@@ -135,11 +164,14 @@ export class LocalProvider implements LlmProvider {
       { temperature: 0.8 },
     )
 
-    const parsed = extractJson<{ prompt?: string; answer?: string; explanation?: string }>(content)
-    if (!parsed.prompt || !parsed.answer) {
-      throw new LlmError('The model response was missing a prompt or answer.', 'parse')
+    const prompt = extractField(content, 'PROMPT', ['ANSWER', 'EXPLANATION'])
+    const answer = extractField(content, 'ANSWER', ['EXPLANATION'])
+    const explanation = extractField(content, 'EXPLANATION', [])
+
+    if (!prompt || !answer) {
+      throw new LlmError(`The model response didn't include both a question and an answer. Got: "${content.slice(0, 160)}"`, 'parse')
     }
-    return { prompt: parsed.prompt, answer: parsed.answer, explanation: parsed.explanation }
+    return { prompt, answer, explanation: explanation || undefined }
   }
 
   async chat(messages: ChatMessage[]): Promise<string> {
