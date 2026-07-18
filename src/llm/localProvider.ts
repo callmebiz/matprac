@@ -47,7 +47,9 @@ async function chatCompletion(
   if (!content) {
     throw new LlmError('The local model returned an unexpected response shape.', 'parse')
   }
-  return content
+  // Reasoning models (e.g. DeepSeek-R1 distills) think out loud in <think>...</think> before the
+  // real answer -- strip it so downstream parsing only ever sees the actual response.
+  return content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
 }
 
 /**
