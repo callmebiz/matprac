@@ -11,6 +11,12 @@ import type { Question, TopicId } from '../types'
 
 const SESSION_SIZE = 15
 
+interface PracticeState {
+  topicIds?: TopicId[]
+  /** An explicit pool to practice instead of the topic-based one, e.g. a tag-filtered custom set. */
+  questions?: Question[]
+}
+
 export function Practice() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -20,11 +26,13 @@ export function Practice() {
   const endpoint = useSettingsStore((s) => s.endpoint)
   const model = useSettingsStore((s) => s.model)
 
-  const topicIds = (location.state as { topicIds?: TopicId[] } | null)?.topicIds ?? null
+  const navState = (location.state as PracticeState | null) ?? null
+  const topicIds = navState?.topicIds ?? null
+  const explicitQuestions = navState?.questions ?? null
 
   const [session, setSession] = useState(() => {
-    if (!topicIds || topicIds.length === 0) return []
-    const pool = topicIds.flatMap((id) => questionsByTopic.get(id) ?? [])
+    const pool = explicitQuestions ?? (topicIds ? topicIds.flatMap((id) => questionsByTopic.get(id) ?? []) : [])
+    if (pool.length === 0) return []
     return buildSession(pool, progress, Math.min(SESSION_SIZE, pool.length))
   })
 
@@ -67,6 +75,9 @@ export function Practice() {
         prompt: generated.prompt,
         answer: generated.answer,
         explanation: generated.explanation,
+        tags: generated.tags,
+        source: 'generated',
+        createdAt: Date.now(),
       }
 
       setSession((s) => {
@@ -81,10 +92,10 @@ export function Practice() {
     }
   }
 
-  if (!topicIds || session.length === 0) {
+  if (session.length === 0) {
     return (
       <div className="max-w-md mx-auto px-4 pt-8 pb-28 text-center">
-        <p className="text-neutral-500 dark:text-neutral-400 mb-4">No session to show. Pick a topic first.</p>
+        <p className="text-neutral-500 dark:text-neutral-400 mb-4">No session to show. Pick something to practice first.</p>
         <button
           onClick={() => navigate('/')}
           className="rounded-2xl bg-indigo-600 text-white font-semibold px-6 py-3"
@@ -108,7 +119,7 @@ export function Practice() {
         <div className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
           {done ? session.length : index + 1} / {session.length}
         </div>
-        {aiTutorEnabled && !done ? (
+        {aiTutorEnabled && topicIds && !done ? (
           <button
             onClick={handleGenerate}
             disabled={generating}
@@ -146,7 +157,7 @@ export function Practice() {
               Home
             </button>
             <button
-              onClick={() => navigate('/practice', { state: { topicIds }, replace: true })}
+              onClick={() => navigate('/practice', { state: navState, replace: true })}
               className="flex-1 rounded-2xl bg-indigo-600 text-white font-semibold py-3.5"
             >
               Practice again

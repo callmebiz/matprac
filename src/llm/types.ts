@@ -10,6 +10,7 @@ export interface GeneratedQuestion {
   prompt: string
   answer: string
   explanation?: string
+  tags?: string[]
 }
 
 export interface GradeAnswerParams {

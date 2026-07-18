@@ -21,6 +21,10 @@ export interface Question {
   prompt: string
   answer: string
   explanation?: string
+  /** Free-form filter tags. Falls back to [topicId, slugified subtopic] when absent -- see questionTags(). */
+  tags?: string[]
+  source?: 'static' | 'generated'
+  createdAt?: number
 }
 
 export interface QuestionProgress {

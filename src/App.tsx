@@ -3,6 +3,7 @@ import { Home } from './pages/Home'
 import { Practice } from './pages/Practice'
 import { Stats } from './pages/Stats'
 import { Settings } from './pages/Settings'
+import { Create } from './pages/Create'
 import { BottomNav } from './components/BottomNav'
 
 function Shell() {
@@ -16,6 +17,7 @@ function Shell() {
         <Route path="/practice" element={<Practice />} />
         <Route path="/stats" element={<Stats />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/create" element={<Create />} />
       </Routes>
       {showNav && <BottomNav />}
     </div>

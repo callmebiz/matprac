@@ -90,8 +90,9 @@ Respond in EXACTLY this format and nothing else -- no markdown fences, no extra 
 PROMPT: the question text
 ANSWER: the correct answer
 EXPLANATION: 1-2 sentences on why, or the key insight
+TAGS: 2-4 short, lowercase, comma-separated topic tags for filtering (e.g. "pca, eigenvectors, dimensionality-reduction")
 
-Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math, written as plain, normal LaTeX -- do not escape backslashes. Target difficulty ${difficulty} of 3. Prefer these subtopics if relevant: ${subtopics.join(', ')}. Make it precise and exam-style; avoid restating a generic textbook definition verbatim.`
+Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math, written as plain, normal LaTeX -- do not escape backslashes. Target difficulty ${difficulty} of 3.${subtopics.length > 0 ? ` Prefer these subtopics if relevant: ${subtopics.join(', ')}.` : ''} Make it precise and exam-style; avoid restating a generic textbook definition verbatim.`
 
 const CHAT_SYSTEM_PROMPT = `You are a sharp, friendly tutor helping a data scientist with a master's in AI engineering go deeper on the math behind ML. You're mid-conversation about a specific flashcard they just answered. Answer their follow-up directly and technically -- don't repeat things already established in the conversation. Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math. Keep replies focused: a few sentences unless the question genuinely calls for more.`
 
@@ -166,14 +167,21 @@ export class LocalProvider implements LlmProvider {
       { temperature: 0.8 },
     )
 
-    const prompt = extractField(content, 'PROMPT', ['ANSWER', 'EXPLANATION'])
-    const answer = extractField(content, 'ANSWER', ['EXPLANATION'])
-    const explanation = extractField(content, 'EXPLANATION', [])
+    const prompt = extractField(content, 'PROMPT', ['ANSWER', 'EXPLANATION', 'TAGS'])
+    const answer = extractField(content, 'ANSWER', ['EXPLANATION', 'TAGS'])
+    const explanation = extractField(content, 'EXPLANATION', ['TAGS'])
+    const tagsField = extractField(content, 'TAGS', [])
 
     if (!prompt || !answer) {
       throw new LlmError(`The model response didn't include both a question and an answer. Got: "${content.slice(0, 160)}"`, 'parse')
     }
-    return { prompt, answer, explanation: explanation || undefined }
+
+    const tags = tagsField
+      ?.split(',')
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean)
+
+    return { prompt, answer, explanation: explanation || undefined, tags: tags && tags.length > 0 ? tags : undefined }
   }
 
   async chat(messages: ChatMessage[]): Promise<string> {

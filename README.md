@@ -14,9 +14,9 @@ percentage tricks to attention math and LoRA fine-tuning.
 
 ## Features
 
-- Flip-card review: see the prompt, reveal the answer + explanation (LaTeX rendered via KaTeX), self-grade "Got it" / "Missed it"
-- **AI tutor (optional):** type a free-form answer and have a self-hosted local model grade it, with feedback and a follow-up question — see [AI tutor setup](#ai-tutor-setup) below
-- **Question generation (optional):** with the AI tutor enabled, generate a fresh question for the current topic on demand
+- Flip-card review: see the prompt, reveal the answer + explanation (LaTeX rendered via KaTeX), self-grade "Got it" / "Missed it", or say "I don't know" to skip straight to the rundown
+- **AI tutor (optional):** type a free-form answer and have a self-hosted local model grade it, then keep going in a real back-and-forth conversation about the question — see [AI tutor setup](#ai-tutor-setup) below
+- **Create tab:** ask the local model to write N questions on anything ("attention mechanisms in transformers", "confidence intervals"), auto-tagged for filtering, saved to a growing personal question bank you can filter by tag and practice from directly
 - Adaptive session queue: weights unseen, weak, and stale cards higher (SRS-lite)
 - Stats dashboard: per-topic accuracy, cards mastered, practice-day streak, weakest subtopics
 - Installable PWA with offline support (works on the home screen on iOS/Android)
@@ -61,3 +61,7 @@ npm run preview  # preview the production build
 
 Question banks live in `src/data/questions/*.ts`, one file per topic. Each `Question` has a `prompt`,
 `answer`, and optional `explanation`, all of which support inline (`$...$`) and block (`$$...$$`) LaTeX.
+
+AI-generated questions (via the Create tab) are stored separately from this curated bank, in their own
+`localStorage` key, keyed by id for fast lookup — so a growing personal question bank never bloats the
+stats/settings writes that happen on every practice attempt.
