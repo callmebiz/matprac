@@ -1,4 +1,4 @@
-import type { Topic } from '../types'
+import type { Question, Topic } from '../types'
 
 export const topics: Topic[] = [
   {
@@ -35,4 +35,9 @@ export const topics: Topic[] = [
   },
 ]
 
-export const topicById = new Map(topics.map((t) => [t.id, t]))
+export const topicById: Map<string, Topic> = new Map(topics.map((t) => [t.id, t]))
+
+/** Display label for a question's topic -- built-in short name, or the LLM-proposed category for a custom one. */
+export function questionTopicLabel(question: Question): string {
+  return topicById.get(question.topicId)?.shortName ?? question.topicLabel ?? question.topicId
+}

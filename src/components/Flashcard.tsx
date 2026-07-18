@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import type { Question } from '../types'
 import { MathText } from './MathText'
-import { topicTheme } from '../lib/theme'
-import { topicById } from '../data/topics'
+import { getTopicTheme } from '../lib/theme'
+import { questionTopicLabel } from '../data/topics'
 import { useSettingsStore, isAiTutorReady } from '../store/useSettingsStore'
 import { getLocalProvider, LlmError } from '../llm'
 import type { GradeResult } from '../llm'
@@ -34,8 +34,8 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
   const endpoint = useSettingsStore((s) => s.endpoint)
   const model = useSettingsStore((s) => s.model)
 
-  const theme = topicTheme[question.topicId]
-  const topic = topicById.get(question.topicId)
+  const theme = getTopicTheme(question.topicId)
+  const topicLabel = questionTopicLabel(question)
 
   function grade(correct: boolean) {
     onGrade(correct)
@@ -43,6 +43,15 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
     setTypedAnswer('')
     setGradeResult(null)
     setPendingFollowUp(null)
+  }
+
+  // Skipping straight to the answer shouldn't also lock you out of the chat -- seed a minimal,
+  // never-displayed grade result so ConversationThread has context to work with.
+  function showAnswer() {
+    setState('revealed')
+    if (aiTutorEnabled) {
+      setGradeResult({ verdict: 'incorrect', feedback: 'Skipped straight to the answer without attempting it.' })
+    }
   }
 
   async function checkAnswer() {
@@ -69,7 +78,7 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
       <div className={`rounded-3xl border ${theme.border} ${theme.bgSoft} p-6 min-h-[280px] flex flex-col`}>
         <div className="flex items-start justify-between gap-3 mb-4">
           <span className={`text-xs font-semibold uppercase tracking-wide ${theme.text}`}>
-            {topic?.shortName} · {question.subtopic}
+            {topicLabel} · {question.subtopic}
           </span>
           <span className="flex gap-1 shrink-0 mt-0.5" aria-label={`Difficulty ${question.difficulty} of 3`}>
             {[1, 2, 3].map((d) => (
@@ -146,7 +155,7 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
           </div>
         )}
 
-        {state === 'graded' && gradeResult && (
+        {(state === 'graded' || state === 'revealed') && gradeResult && (
           <ConversationThread
             question={question}
             typedAnswer={typedAnswer}
@@ -176,7 +185,7 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
               Check answer
             </button>
             <button
-              onClick={() => setState('revealed')}
+              onClick={showAnswer}
               className="w-full rounded-2xl border border-neutral-900/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 font-semibold py-3.5 text-base active:scale-[0.98] transition-transform"
             >
               I don't know — show me the answer
@@ -184,7 +193,7 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
           </div>
         ) : (
           <button
-            onClick={() => setState('revealed')}
+            onClick={showAnswer}
             className="w-full rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-semibold py-4 text-base active:scale-[0.98] transition-transform"
           >
             Show answer
@@ -209,7 +218,7 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
             Try again
           </button>
           <button
-            onClick={() => setState('revealed')}
+            onClick={showAnswer}
             className="rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-semibold py-4 text-base"
           >
             Show answer

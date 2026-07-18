@@ -1,15 +1,37 @@
 import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { topics } from '../data/topics'
-import { topicTheme } from '../lib/theme'
+import { topics, topicById, questionTopicLabel } from '../data/topics'
+import { getTopicTheme } from '../lib/theme'
 import { slugify, questionTags } from '../lib/tags'
 import { useQuestionBankStore } from '../store/useQuestionBankStore'
 import { useSettingsStore, isAiTutorReady } from '../store/useSettingsStore'
 import { getLocalProvider, LlmError } from '../llm'
 import { MathText } from '../components/MathText'
-import type { Question, TopicId } from '../types'
+import type { Question } from '../types'
 
 const COUNT_OPTIONS = [3, 5, 10] as const
+
+/**
+ * Resolves the model's free-text CATEGORY into a stable topicId: reuse a built-in topic if it
+ * matches one by name, reuse a previously-created custom category if it matches one already in the
+ * bank (so repeated requests on the same subject converge on one bucket instead of near-duplicates),
+ * or mint a new slug for a genuinely new category.
+ */
+function resolveCategory(
+  category: string | undefined,
+  fallbackText: string,
+  bank: Question[],
+): { topicId: string; topicLabel?: string } {
+  const label = (category || fallbackText).trim()
+
+  const builtin = topics.find((t) => t.name.toLowerCase() === label.toLowerCase() || t.shortName.toLowerCase() === label.toLowerCase())
+  if (builtin) return { topicId: builtin.id }
+
+  const existingCustom = bank.find((q) => !topicById.has(q.topicId) && questionTopicLabel(q).toLowerCase() === label.toLowerCase())
+  if (existingCustom) return { topicId: existingCustom.topicId, topicLabel: questionTopicLabel(existingCustom) }
+
+  return { topicId: slugify(label) || 'general', topicLabel: label }
+}
 
 export function Create() {
   const navigate = useNavigate()
@@ -23,7 +45,6 @@ export function Create() {
 
   const [request, setRequest] = useState('')
   const [count, setCount] = useState<(typeof COUNT_OPTIONS)[number]>(5)
-  const [topicId, setTopicId] = useState<TopicId>(topics[0].id)
   const [generating, setGenerating] = useState(false)
   const [phase, setPhase] = useState<'generating' | 'verifying'>('generating')
   const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0, rejected: 0 })
@@ -34,6 +55,10 @@ export function Create() {
 
   const bankList = useMemo(() => Object.values(bank).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)), [bank])
   const allTags = useMemo(() => [...new Set(bankList.flatMap(questionTags))].sort(), [bankList])
+  const existingCategories = useMemo(
+    () => [...new Set([...topics.map((t) => t.name), ...bankList.map(questionTopicLabel)])],
+    [bankList],
+  )
   const filtered = useMemo(
     () => (selectedTags.size === 0 ? bankList : bankList.filter((q) => questionTags(q).some((t) => selectedTags.has(t)))),
     [bankList, selectedTags],
@@ -59,6 +84,15 @@ export function Create() {
 
     const provider = getLocalProvider(endpoint, model)
 
+    // Best-effort: keeps the screen from auto-locking mid-batch. Won't survive switching apps --
+    // there's no reliable way for a PWA to keep a fetch alive once it's backgrounded on mobile.
+    let wakeLock: WakeLockSentinel | null = null
+    try {
+      wakeLock = await navigator.wakeLock?.request('screen')
+    } catch {
+      // Unsupported, denied, or page hidden -- generation still works either way.
+    }
+
     for (let i = 0; i < count; i++) {
       if (cancelRef.current) break
       try {
@@ -68,6 +102,7 @@ export function Create() {
           topicName: text,
           subtopics: [],
           difficulty,
+          existingCategories,
         })
 
         setPhase('verifying')
@@ -82,9 +117,11 @@ export function Create() {
           continue
         }
 
+        const { topicId, topicLabel } = resolveCategory(generated.category, text, bankList)
         const question: Question = {
           id: `gen-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
           topicId,
+          topicLabel,
           subtopic: text.slice(0, 60),
           difficulty,
           prompt: generated.prompt,
@@ -106,6 +143,8 @@ export function Create() {
       }
     }
 
+    await wakeLock?.release().catch(() => {})
+
     setGenerating(false)
   }
 
@@ -118,9 +157,10 @@ export function Create() {
     <div className="max-w-md mx-auto px-4 pt-8 pb-28">
       <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-1">Create questions</h1>
       <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6">
-        Ask your local model to write questions on anything, tagged for filtering later. Each one is
-        independently double-checked before it's saved — roughly doubles generation time in exchange for
-        catching wrong answers before they reach your bank.
+        Ask your local model to write questions on anything — it files each one under the best-fitting
+        category itself, creating a new one if nothing existing fits, and tags it for filtering later.
+        Each one is independently double-checked before it's saved — roughly doubles generation time in
+        exchange for catching wrong answers before they reach your bank.
       </p>
 
       {!aiTutorEnabled ? (
@@ -157,22 +197,6 @@ export function Create() {
               </button>
             ))}
           </div>
-
-          <label className="block text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-1.5">
-            File under
-          </label>
-          <select
-            value={topicId}
-            onChange={(e) => setTopicId(e.target.value as TopicId)}
-            disabled={generating}
-            className="w-full rounded-xl border border-neutral-900/10 dark:border-white/10 bg-transparent px-3.5 py-2.5 text-sm text-neutral-900 dark:text-neutral-100 mb-4 disabled:opacity-60"
-          >
-            {topics.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
 
           {generating ? (
             <div className="flex flex-col gap-2">
@@ -244,13 +268,16 @@ export function Create() {
         <>
           <div className="flex flex-col gap-2 mb-4">
             {filtered.map((q) => {
-              const theme = topicTheme[q.topicId]
+              const theme = getTopicTheme(q.topicId)
               return (
                 <div
                   key={q.id}
                   className={`rounded-xl border ${theme.border} ${theme.bgSoft} p-3.5 flex items-start justify-between gap-3`}
                 >
                   <div className="min-w-0">
+                    <div className={`text-[11px] font-semibold uppercase tracking-wide mb-1 ${theme.text}`}>
+                      {questionTopicLabel(q)}
+                    </div>
                     <div className="text-sm text-neutral-800 dark:text-neutral-200 line-clamp-2 mb-1.5">
                       <MathText text={q.prompt} />
                     </div>

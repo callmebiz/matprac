@@ -165,7 +165,7 @@ FOLLOWUP: one short question that deepens understanding (omit this line entirely
 
 Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math in FEEDBACK or FOLLOWUP, written as plain, normal LaTeX -- do not escape backslashes.`
 
-const GENERATE_SYSTEM_PROMPT = (topicName: string, subtopics: string[], difficulty: number) => `You are writing a new flashcard question for a math practice app aimed at a data scientist with a master's in AI engineering, staying sharp on "${topicName}".
+const GENERATE_SYSTEM_PROMPT = (topicName: string, subtopics: string[], difficulty: number, existingCategories: string[]) => `You are writing a new flashcard question for a math practice app aimed at a data scientist with a master's in AI engineering, staying sharp on "${topicName}".
 
 Respond in EXACTLY this format and nothing else -- no markdown fences, no extra commentary before or after:
 
@@ -173,8 +173,15 @@ PROMPT: the question text
 ANSWER: the correct answer
 EXPLANATION: 1-2 sentences on why, or the key insight
 TAGS: 2-4 short, lowercase, comma-separated topic tags for filtering (e.g. "pca, eigenvectors, dimensionality-reduction")
+CATEGORY: the single best broad category this question should be filed under
 
-Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math, written as plain, normal LaTeX -- do not escape backslashes. Target difficulty ${difficulty} of 3.${subtopics.length > 0 ? ` Prefer these subtopics if relevant: ${subtopics.join(', ')}.` : ''} Make it precise and exam-style; avoid restating a generic textbook definition verbatim.`
+Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math, written as plain, normal LaTeX -- do not escape backslashes. Target difficulty ${difficulty} of 3.${subtopics.length > 0 ? ` Prefer these subtopics if relevant: ${subtopics.join(', ')}.` : ''} Make it precise and exam-style; avoid restating a generic textbook definition verbatim.
+
+For CATEGORY: this app files every question under a broad subject category (e.g. "Linear Algebra", "Probability & Statistics").${
+  existingCategories.length > 0
+    ? ` These categories already exist: ${existingCategories.join(', ')}. Reuse one of these verbatim if the question genuinely fits it.`
+    : ''
+} If none of the existing categories fit well, propose a new short category name (2-4 words, title case, e.g. "SQL & Data Querying") -- do not force a bad fit just to avoid creating a new one.`
 
 const CHAT_SYSTEM_PROMPT = `You are a sharp, friendly tutor helping a data scientist with a master's in AI engineering go deeper on the math behind ML. You're mid-conversation about a specific flashcard they just answered. Answer their follow-up directly and technically -- don't repeat things already established in the conversation. Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math. Keep replies focused: a few sentences unless the question genuinely calls for more.`
 
@@ -251,21 +258,22 @@ export class LocalProvider implements LlmProvider {
     }
   }
 
-  async generateQuestion({ topicName, subtopics, difficulty }: GenerateQuestionParams): Promise<GeneratedQuestion> {
+  async generateQuestion({ topicName, subtopics, difficulty, existingCategories = [] }: GenerateQuestionParams): Promise<GeneratedQuestion> {
     const content = await chatCompletion(
       this.endpoint,
       this.model,
       [
-        { role: 'system', content: GENERATE_SYSTEM_PROMPT(topicName, subtopics, difficulty) },
+        { role: 'system', content: GENERATE_SYSTEM_PROMPT(topicName, subtopics, difficulty, existingCategories) },
         { role: 'user', content: 'Generate one new flashcard question now.' },
       ],
       { temperature: 0.8 },
     )
 
-    const prompt = extractField(content, 'PROMPT', ['ANSWER', 'EXPLANATION', 'TAGS'])
-    const answer = extractField(content, 'ANSWER', ['EXPLANATION', 'TAGS'])
-    const explanation = extractField(content, 'EXPLANATION', ['TAGS'])
-    const tagsField = extractField(content, 'TAGS', [])
+    const prompt = extractField(content, 'PROMPT', ['ANSWER', 'EXPLANATION', 'TAGS', 'CATEGORY'])
+    const answer = extractField(content, 'ANSWER', ['EXPLANATION', 'TAGS', 'CATEGORY'])
+    const explanation = extractField(content, 'EXPLANATION', ['TAGS', 'CATEGORY'])
+    const tagsField = extractField(content, 'TAGS', ['CATEGORY'])
+    const categoryField = extractField(content, 'CATEGORY', [])
 
     if (!prompt || !answer) {
       throw new LlmError(`The model response didn't include both a question and an answer. Got: "${content.slice(0, 160)}"`, 'parse')
@@ -276,7 +284,13 @@ export class LocalProvider implements LlmProvider {
       .map((t) => t.trim().toLowerCase())
       .filter(Boolean)
 
-    return { prompt, answer, explanation: explanation || undefined, tags: tags && tags.length > 0 ? tags : undefined }
+    return {
+      prompt,
+      answer,
+      explanation: explanation || undefined,
+      tags: tags && tags.length > 0 ? tags : undefined,
+      category: categoryField || undefined,
+    }
   }
 
   async verifyQuestion({ prompt, answer, explanation }: VerifyQuestionParams): Promise<VerifyResult> {

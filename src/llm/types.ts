@@ -11,6 +11,8 @@ export interface GeneratedQuestion {
   answer: string
   explanation?: string
   tags?: string[]
+  /** The model's chosen filing category -- an existing one reused, or a newly proposed short name. */
+  category?: string
 }
 
 export interface GradeAnswerParams {
@@ -24,6 +26,8 @@ export interface GenerateQuestionParams {
   topicName: string
   subtopics: string[]
   difficulty: 1 | 2 | 3
+  /** Categories that already exist (built-in + previously created), so the model reuses instead of duplicating. */
+  existingCategories?: string[]
 }
 
 export interface ChatMessage {

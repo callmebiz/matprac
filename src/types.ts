@@ -14,7 +14,10 @@ export type Difficulty = 1 | 2 | 3
 
 export interface Question {
   id: string
-  topicId: TopicId
+  /** A built-in TopicId for curated cards, or an arbitrary slug for an AI-created category. */
+  topicId: TopicId | string
+  /** Display name for a non-built-in topicId (the LLM's proposed category name). Ignored for built-in topics. */
+  topicLabel?: string
   subtopic: string
   difficulty: Difficulty
   /** Prompt text; wrap math in $...$ (inline) or $$...$$ (block) */
