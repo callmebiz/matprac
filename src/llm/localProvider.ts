@@ -17,25 +17,32 @@ function stripThinking(text: string): string {
 }
 
 /**
- * A fixed total-duration timeout can't tell "dead" apart from "slow but still producing tokens" --
- * a long, detailed answer on a partially CPU-offloaded model can legitimately take minutes. So this
- * streams the response and only times out on genuine *inactivity* (no bytes at all for a while),
- * resetting the clock on every chunk received. Falls back to a plain non-streaming read if the
- * server ignores `stream: true` (some minimal OpenAI-compatible servers do).
+ * A single fixed idle timeout can't tell "dead" apart from "still evaluating a long prompt" --
+ * prompt evaluation (re-processing the whole conversation so far) produces zero bytes and can
+ * legitimately take minutes on a partially CPU-offloaded model as a conversation grows, while the
+ * gap *between* tokens once decoding has actually started is reliably sub-second (measured
+ * directly: Ollama -> proxy -> Tailscale Serve all forward chunks with ~0s gaps). So this uses two
+ * budgets: a generous one for the wait before the first byte arrives, and a tight one for silence
+ * after streaming has begun. Falls back to a plain non-streaming read if the server ignores
+ * `stream: true` (some minimal OpenAI-compatible servers do).
  */
 async function chatCompletion(
   endpoint: string,
   model: string,
   messages: ChatMessage[],
-  { temperature = 0.4, idleTimeoutMs = 45_000 }: { temperature?: number; idleTimeoutMs?: number } = {},
+  {
+    temperature = 0.4,
+    firstByteTimeoutMs = 180_000,
+    idleTimeoutMs = 30_000,
+  }: { temperature?: number; firstByteTimeoutMs?: number; idleTimeoutMs?: number } = {},
 ): Promise<string> {
   const controller = new AbortController()
-  let idleTimer: ReturnType<typeof setTimeout> | undefined
-  const resetIdleTimer = () => {
-    clearTimeout(idleTimer)
-    idleTimer = setTimeout(() => controller.abort(), idleTimeoutMs)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const arm = (ms: number) => {
+    clearTimeout(timer)
+    timer = setTimeout(() => controller.abort(), ms)
   }
-  resetIdleTimer()
+  arm(firstByteTimeoutMs)
 
   let res: Response
   try {
@@ -46,9 +53,12 @@ async function chatCompletion(
       signal: controller.signal,
     })
   } catch (err) {
-    clearTimeout(idleTimer)
+    clearTimeout(timer)
     if (controller.signal.aborted) {
-      throw new LlmError('The local model stopped responding (no output for a while).', 'network')
+      throw new LlmError(
+        'The local model took too long to start responding (it may be processing a long conversation history). Try asking a shorter follow-up, or wait for it to warm up and try again.',
+        'network',
+      )
     }
     throw new LlmError(
       `Could not reach the local model at ${endpoint}. Make sure it's running and reachable from this device (check CORS / OLLAMA_ORIGINS if using Ollama).`,
@@ -57,14 +67,14 @@ async function chatCompletion(
   }
 
   if (!res.ok) {
-    clearTimeout(idleTimer)
+    clearTimeout(timer)
     const body = await res.text().catch(() => '')
     throw new LlmError(`Local model server returned an error (HTTP ${res.status}). ${body.slice(0, 200)}`, 'http')
   }
 
   // Some OpenAI-compatible servers ignore `stream: true` and just return one JSON blob -- handle that too.
   if (!res.body || !(res.headers.get('content-type') ?? '').includes('text/event-stream')) {
-    clearTimeout(idleTimer)
+    clearTimeout(timer)
     const data = await res.json().catch(() => null)
     const content: string | undefined = data?.choices?.[0]?.message?.content
     if (!content) {
@@ -77,12 +87,16 @@ async function chatCompletion(
   const decoder = new TextDecoder()
   let full = ''
   let buffer = ''
+  let gotFirstByte = false
 
   try {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      resetIdleTimer()
+      if (!gotFirstByte) {
+        gotFirstByte = true
+      }
+      arm(idleTimeoutMs)
       buffer += decoder.decode(value, { stream: true })
 
       const lines = buffer.split('\n')
@@ -102,11 +116,16 @@ async function chatCompletion(
     }
   } catch (err) {
     if (controller.signal.aborted) {
-      throw new LlmError('The local model stopped responding (no output for a while).', 'network')
+      throw new LlmError(
+        gotFirstByte
+          ? 'The local model stopped responding mid-answer (no output for a while).'
+          : 'The local model took too long to start responding (it may be processing a long conversation history). Try asking a shorter follow-up, or wait for it to warm up and try again.',
+        'network',
+      )
     }
     throw new LlmError('Lost connection to the local model mid-response.', 'network')
   } finally {
-    clearTimeout(idleTimer)
+    clearTimeout(timer)
   }
 
   if (!full.trim()) {
