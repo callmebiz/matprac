@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Question } from '../types'
 import { MathText } from './MathText'
 import { getLocalProvider, LlmError } from '../llm'
@@ -10,6 +10,9 @@ interface ConversationThreadProps {
   gradeResult: GradeResult
   endpoint: string
   model: string
+  /** Set to ask this on the user's behalf (e.g. tapping the suggested follow-up). */
+  pendingMessage?: string | null
+  onPendingMessageSent?: () => void
 }
 
 function buildContext(question: Question, typedAnswer: string, gradeResult: GradeResult): ChatMessage[] {
@@ -30,19 +33,27 @@ function buildContext(question: Question, typedAnswer: string, gradeResult: Grad
   ]
 }
 
-export function ConversationThread({ question, typedAnswer, gradeResult, endpoint, model }: ConversationThreadProps) {
+export function ConversationThread({
+  question,
+  typedAnswer,
+  gradeResult,
+  endpoint,
+  model,
+  pendingMessage,
+  onPendingMessageSent,
+}: ConversationThreadProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  async function send() {
-    const text = draft.trim()
+  async function send(overrideText?: string) {
+    const text = (overrideText ?? draft).trim()
     if (!text || loading) return
 
     const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: text }]
     setMessages(nextMessages)
-    setDraft('')
+    if (overrideText === undefined) setDraft('')
     setLoading(true)
     setError('')
 
@@ -56,6 +67,14 @@ export function ConversationThread({ question, typedAnswer, gradeResult, endpoin
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (pendingMessage) {
+      void send(pendingMessage)
+      onPendingMessageSent?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingMessage])
 
   return (
     <div className="mt-5 pt-5 border-t border-neutral-900/10 dark:border-white/10 text-left">
@@ -93,14 +112,14 @@ export function ConversationThread({ question, typedAnswer, gradeResult, endpoin
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') send()
+            if (e.key === 'Enter') void send()
           }}
           placeholder="Ask why, or push back…"
           disabled={loading}
           className="flex-1 min-w-0 rounded-xl border border-neutral-900/10 dark:border-white/10 bg-white/60 dark:bg-black/20 px-3.5 py-2.5 text-sm text-neutral-900 dark:text-neutral-100 disabled:opacity-60"
         />
         <button
-          onClick={send}
+          onClick={() => send()}
           disabled={loading || !draft.trim()}
           className="rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-semibold px-4 text-sm disabled:opacity-40"
         >

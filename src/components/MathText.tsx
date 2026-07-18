@@ -14,12 +14,13 @@ interface MathTextProps {
   className?: string
 }
 
-/** Renders a string containing plain text mixed with $inline$ and $$block$$ LaTeX math. */
+// Prefers $inline$ / $$block$$, but some models default to \(inline\) / \[block\] regardless of
+// what the prompt asks for -- support both so real LaTeX never shows up as raw backslash text.
+const MATH_PATTERN = /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\$[^$\n]+?\$|\\\([^\n]+?\\\))/g
+
+/** Renders a string containing plain text mixed with LaTeX math in either delimiter style. */
 export function MathText({ text, className }: MathTextProps) {
-  const parts = useMemo(() => {
-    const regex = /(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$)/g
-    return text.split(regex).filter((s) => s.length > 0)
-  }, [text])
+  const parts = useMemo(() => text.split(MATH_PATTERN).filter((s) => s.length > 0), [text])
 
   return (
     <span className={className}>
@@ -27,10 +28,14 @@ export function MathText({ text, className }: MathTextProps) {
         if (part.startsWith('$$') && part.endsWith('$$')) {
           return <span key={i} dangerouslySetInnerHTML={{ __html: renderMath(part.slice(2, -2), true) }} />
         }
+        if (part.startsWith('\\[') && part.endsWith('\\]')) {
+          return <span key={i} dangerouslySetInnerHTML={{ __html: renderMath(part.slice(2, -2), true) }} />
+        }
         if (part.startsWith('$') && part.endsWith('$')) {
-          return (
-            <span key={i} dangerouslySetInnerHTML={{ __html: renderMath(part.slice(1, -1), false) }} />
-          )
+          return <span key={i} dangerouslySetInnerHTML={{ __html: renderMath(part.slice(1, -1), false) }} />
+        }
+        if (part.startsWith('\\(') && part.endsWith('\\)')) {
+          return <span key={i} dangerouslySetInnerHTML={{ __html: renderMath(part.slice(2, -2), false) }} />
         }
         return <Fragment key={i}>{part}</Fragment>
       })}

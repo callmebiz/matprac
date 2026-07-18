@@ -81,7 +81,7 @@ VERDICT: correct, partial, or incorrect
 FEEDBACK: 2-3 sentences on what was right or wrong
 FOLLOWUP: one short question that deepens understanding (omit this line entirely if it wouldn't add anything)
 
-Use LaTeX ($...$ inline, $$...$$ block) for any math in FEEDBACK or FOLLOWUP, written as plain, normal LaTeX -- do not escape backslashes.`
+Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math in FEEDBACK or FOLLOWUP, written as plain, normal LaTeX -- do not escape backslashes.`
 
 const GENERATE_SYSTEM_PROMPT = (topicName: string, subtopics: string[], difficulty: number) => `You are writing a new flashcard question for a math practice app aimed at a data scientist with a master's in AI engineering, staying sharp on "${topicName}".
 
@@ -91,9 +91,9 @@ PROMPT: the question text
 ANSWER: the correct answer
 EXPLANATION: 1-2 sentences on why, or the key insight
 
-Use LaTeX ($...$ inline, $$...$$ block) for any math, written as plain, normal LaTeX -- do not escape backslashes. Target difficulty ${difficulty} of 3. Prefer these subtopics if relevant: ${subtopics.join(', ')}. Make it precise and exam-style; avoid restating a generic textbook definition verbatim.`
+Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math, written as plain, normal LaTeX -- do not escape backslashes. Target difficulty ${difficulty} of 3. Prefer these subtopics if relevant: ${subtopics.join(', ')}. Make it precise and exam-style; avoid restating a generic textbook definition verbatim.`
 
-const CHAT_SYSTEM_PROMPT = `You are a sharp, friendly tutor helping a data scientist with a master's in AI engineering go deeper on the math behind ML. You're mid-conversation about a specific flashcard they just answered. Answer their follow-up directly and technically -- don't repeat things already established in the conversation. Use LaTeX ($...$ inline, $$...$$ block) for any math. Keep replies focused: a few sentences unless the question genuinely calls for more.`
+const CHAT_SYSTEM_PROMPT = `You are a sharp, friendly tutor helping a data scientist with a master's in AI engineering go deeper on the math behind ML. You're mid-conversation about a specific flashcard they just answered. Answer their follow-up directly and technically -- don't repeat things already established in the conversation. Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math. Keep replies focused: a few sentences unless the question genuinely calls for more.`
 
 export async function testLocalConnection(endpoint: string, model: string): Promise<void> {
   // Generous timeout: the first request after starting a local model server often has to

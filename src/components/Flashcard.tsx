@@ -28,6 +28,7 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
   const [typedAnswer, setTypedAnswer] = useState('')
   const [gradeResult, setGradeResult] = useState<GradeResult | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
+  const [pendingFollowUp, setPendingFollowUp] = useState<string | null>(null)
 
   const aiTutorEnabled = useSettingsStore(isAiTutorReady)
   const endpoint = useSettingsStore((s) => s.endpoint)
@@ -41,6 +42,7 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
     setState('question')
     setTypedAnswer('')
     setGradeResult(null)
+    setPendingFollowUp(null)
   }
 
   async function checkAnswer() {
@@ -97,6 +99,15 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
           />
         )}
 
+        {state !== 'question' && typedAnswer.trim() && (
+          <div className="mt-4 pt-4 border-t border-neutral-900/10 dark:border-white/10 text-left">
+            <div className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 mb-1">Your answer</div>
+            <div className="text-sm text-neutral-700 dark:text-neutral-300">
+              <MathText text={typedAnswer} />
+            </div>
+          </div>
+        )}
+
         {state === 'graded' && gradeResult && (
           <div className="mt-5 pt-5 border-t border-neutral-900/10 dark:border-white/10 text-left">
             <div className={`inline-block rounded-full border px-3 py-1 text-xs font-semibold mb-3 ${verdictStyle[gradeResult.verdict].className}`}>
@@ -106,9 +117,12 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
               <MathText text={gradeResult.feedback} />
             </div>
             {gradeResult.followUp && (
-              <div className="text-sm text-neutral-500 dark:text-neutral-400 italic mb-3">
-                <MathText text={gradeResult.followUp} />
-              </div>
+              <button
+                onClick={() => setPendingFollowUp(gradeResult.followUp ?? null)}
+                className="block w-full text-left text-sm text-neutral-500 dark:text-neutral-400 italic mb-3 underline decoration-dotted underline-offset-4"
+              >
+                <MathText text={gradeResult.followUp} /> <span className="not-italic">— tap to ask</span>
+              </button>
             )}
           </div>
         )}
@@ -139,6 +153,8 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
             gradeResult={gradeResult}
             endpoint={endpoint}
             model={model}
+            pendingMessage={pendingFollowUp}
+            onPendingMessageSent={() => setPendingFollowUp(null)}
           />
         )}
 
@@ -161,9 +177,9 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
             </button>
             <button
               onClick={() => setState('revealed')}
-              className="text-sm text-neutral-500 dark:text-neutral-400 font-medium py-1"
+              className="w-full rounded-2xl border border-neutral-900/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 font-semibold py-3.5 text-base active:scale-[0.98] transition-transform"
             >
-              Skip — just show me the answer
+              I don't know — show me the answer
             </button>
           </div>
         ) : (
