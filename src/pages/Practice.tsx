@@ -25,6 +25,7 @@ export function Practice() {
   const aiTutorEnabled = useSettingsStore(isAiTutorReady)
   const endpoint = useSettingsStore((s) => s.endpoint)
   const model = useSettingsStore((s) => s.model)
+  const patienceMinutes = useSettingsStore((s) => s.patienceMinutes)
 
   const navState = (location.state as PracticeState | null) ?? null
   const topicIds = navState?.topicIds ?? null
@@ -61,7 +62,7 @@ export function Practice() {
       const subtopics = [...new Set((questionsByTopic.get(topicId) ?? []).map((q) => q.subtopic))]
       const difficulty = (Math.floor(Math.random() * 3) + 1) as 1 | 2 | 3
 
-      const generated = await getLocalProvider(endpoint, model).generateQuestion({
+      const generated = await getLocalProvider(endpoint, model, patienceMinutes * 60_000).generateQuestion({
         topicName: topic?.name ?? topicId,
         subtopics,
         difficulty,

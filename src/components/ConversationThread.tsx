@@ -3,6 +3,7 @@ import type { Question } from '../types'
 import { MarkdownText } from './MarkdownText'
 import { getLocalProvider, LlmError } from '../llm'
 import type { ChatMessage, GradeResult } from '../llm'
+import { useSettingsStore } from '../store/useSettingsStore'
 import { emptyTree, appendNode, setActiveIndex, activePath, siblingInfo, pathTo } from '../lib/chatTree'
 import type { ChatTree, ChatNode } from '../lib/chatTree'
 
@@ -50,6 +51,7 @@ export function ConversationThread({
   const [editDraft, setEditDraft] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const patienceMinutes = useSettingsStore((s) => s.patienceMinutes)
 
   const path = activePath(tree)
 
@@ -58,7 +60,7 @@ export function ConversationThread({
     setError('')
     try {
       const context = [...buildContext(question, typedAnswer, gradeResult), ...pathTo(fromTree, parentId)]
-      const reply = await getLocalProvider(endpoint, model).chat(context)
+      const reply = await getLocalProvider(endpoint, model, patienceMinutes * 60_000).chat(context)
       setTree((t) => appendNode(t, parentId, { role: 'assistant', content: reply }).tree)
     } catch (err) {
       setError(err instanceof LlmError ? err.message : 'Something went wrong reaching the model.')

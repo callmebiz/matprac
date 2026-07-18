@@ -42,11 +42,12 @@ ollama pull llama3.1
   is exempt, so it works seamlessly on the same machine. To reach it from your phone, tunnel the local
   server over HTTPS (e.g. [Tailscale Serve](https://tailscale.com/kb/1312/serve)).
 
-Responses stream in as they're generated. Longer chat conversations resend the full thread each turn,
-so on modest hardware (partial CPU offload) the model may take a while to *start* replying while it
-re-processes that context — the app allows up to 3 minutes of silence before the first token, but only
-30 seconds of silence once tokens are actively flowing, since a stalled stream and a slow prompt-eval
-look identical until you've measured which one you're in.
+Responses stream in as they're generated. The model may take a while to *start* replying -- cold model
+loads, long conversations, and modest/partially-CPU-offloaded hardware all add to that wait, and grading,
+generation, and verification calls all hit the same limit independently. **Settings → Response patience**
+controls how long the app waits for that first token before giving up (2-30 minutes, default 10); once
+tokens are actively streaming, a much shorter 30-second silence check takes over instead, since a stalled
+stream and a slow-but-alive model look identical until you've measured which one you're in.
 
 No secrets are involved in this path — nothing is sent anywhere except your own local server.
 

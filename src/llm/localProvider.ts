@@ -32,7 +32,7 @@ async function chatCompletion(
   messages: ChatMessage[],
   {
     temperature = 0.4,
-    firstByteTimeoutMs = 180_000,
+    firstByteTimeoutMs = 300_000,
     idleTimeoutMs = 30_000,
   }: { temperature?: number; firstByteTimeoutMs?: number; idleTimeoutMs?: number } = {},
 ): Promise<string> {
@@ -210,10 +210,12 @@ export async function testLocalConnection(endpoint: string, model: string): Prom
 export class LocalProvider implements LlmProvider {
   private endpoint: string
   private model: string
+  private firstByteTimeoutMs?: number
 
-  constructor(endpoint: string, model: string) {
+  constructor(endpoint: string, model: string, firstByteTimeoutMs?: number) {
     this.endpoint = endpoint
     this.model = model
+    this.firstByteTimeoutMs = firstByteTimeoutMs
   }
 
   async gradeAnswer({ prompt, expectedAnswer, explanation, userAnswer }: GradeAnswerParams): Promise<GradeResult> {
@@ -235,7 +237,7 @@ export class LocalProvider implements LlmProvider {
         { role: 'system', content: GRADE_SYSTEM_PROMPT },
         { role: 'user', content: userPrompt },
       ],
-      { temperature: 0.2 },
+      { temperature: 0.2, firstByteTimeoutMs: this.firstByteTimeoutMs },
     )
 
     const verdictField = extractField(content, 'VERDICT', ['FEEDBACK', 'FOLLOWUP'])
@@ -266,7 +268,7 @@ export class LocalProvider implements LlmProvider {
         { role: 'system', content: GENERATE_SYSTEM_PROMPT(topicName, subtopics, difficulty, existingCategories) },
         { role: 'user', content: 'Generate one new flashcard question now.' },
       ],
-      { temperature: 0.8 },
+      { temperature: 0.8, firstByteTimeoutMs: this.firstByteTimeoutMs },
     )
 
     const prompt = extractField(content, 'PROMPT', ['ANSWER', 'EXPLANATION', 'TAGS', 'CATEGORY'])
@@ -311,7 +313,7 @@ export class LocalProvider implements LlmProvider {
         { role: 'system', content: VERIFY_SYSTEM_PROMPT },
         { role: 'user', content: userPrompt },
       ],
-      { temperature: 0.2 },
+      { temperature: 0.2, firstByteTimeoutMs: this.firstByteTimeoutMs },
     )
 
     const verdictField = extractField(content, 'VERDICT', ['NOTE'])
@@ -331,7 +333,10 @@ export class LocalProvider implements LlmProvider {
     const hasSystemPrompt = messages.some((m) => m.role === 'system')
     const fullMessages = hasSystemPrompt ? messages : [{ role: 'system' as const, content: CHAT_SYSTEM_PROMPT }, ...messages]
 
-    const content = await chatCompletion(this.endpoint, this.model, fullMessages, { temperature: 0.6 })
+    const content = await chatCompletion(this.endpoint, this.model, fullMessages, {
+      temperature: 0.6,
+      firstByteTimeoutMs: this.firstByteTimeoutMs,
+    })
     return content.trim()
   }
 }

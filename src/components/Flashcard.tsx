@@ -33,6 +33,7 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
   const aiTutorEnabled = useSettingsStore(isAiTutorReady)
   const endpoint = useSettingsStore((s) => s.endpoint)
   const model = useSettingsStore((s) => s.model)
+  const patienceMinutes = useSettingsStore((s) => s.patienceMinutes)
 
   const theme = getTopicTheme(question.topicId)
   const topicLabel = questionTopicLabel(question)
@@ -57,7 +58,7 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
   async function checkAnswer() {
     setState('grading')
     try {
-      const result = await getLocalProvider(endpoint, model).gradeAnswer({
+      const result = await getLocalProvider(endpoint, model, patienceMinutes * 60_000).gradeAnswer({
         prompt: question.prompt,
         expectedAnswer: question.answer,
         explanation: question.explanation,

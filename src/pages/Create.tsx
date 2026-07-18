@@ -38,6 +38,7 @@ export function Create() {
   const aiTutorEnabled = useSettingsStore(isAiTutorReady)
   const endpoint = useSettingsStore((s) => s.endpoint)
   const model = useSettingsStore((s) => s.model)
+  const patienceMinutes = useSettingsStore((s) => s.patienceMinutes)
 
   const bank = useQuestionBankStore((s) => s.questions)
   const addQuestions = useQuestionBankStore((s) => s.addQuestions)
@@ -82,7 +83,7 @@ export function Create() {
     cancelRef.current = false
     setProgress({ done: 0, total: count, failed: 0, rejected: 0 })
 
-    const provider = getLocalProvider(endpoint, model)
+    const provider = getLocalProvider(endpoint, model, patienceMinutes * 60_000)
 
     // Best-effort: keeps the screen from auto-locking mid-batch. Won't survive switching apps --
     // there's no reliable way for a PWA to keep a fetch alive once it's backgrounded on mobile.

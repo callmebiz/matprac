@@ -4,8 +4,11 @@ import { testLocalConnection, LlmError } from '../llm'
 
 type TestStatus = { state: 'idle' } | { state: 'testing' } | { state: 'ok' } | { state: 'error'; message: string }
 
+const PATIENCE_OPTIONS = [2, 5, 10, 20, 30] as const
+
 export function Settings() {
-  const { aiTutorEnabled, endpoint, model, setAiTutorEnabled, setEndpoint, setModel } = useSettingsStore()
+  const { aiTutorEnabled, endpoint, model, patienceMinutes, setAiTutorEnabled, setEndpoint, setModel, setPatienceMinutes } =
+    useSettingsStore()
   const [draftEndpoint, setDraftEndpoint] = useState(endpoint)
   const [draftModel, setDraftModel] = useState(model)
   const [test, setTest] = useState<TestStatus>({ state: 'idle' })
@@ -74,6 +77,30 @@ export function Settings() {
           placeholder="llama3.1"
           className="w-full rounded-xl border border-neutral-900/10 dark:border-white/10 bg-transparent px-3.5 py-2.5 text-sm text-neutral-900 dark:text-neutral-100 mb-4"
         />
+
+        <label className="block text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-1.5">
+          Response patience
+        </label>
+        <div className="flex gap-2 mb-1.5">
+          {PATIENCE_OPTIONS.map((n) => (
+            <button
+              key={n}
+              onClick={() => setPatienceMinutes(n)}
+              className={`flex-1 rounded-xl border py-2 text-sm font-semibold ${
+                patienceMinutes === n
+                  ? 'bg-indigo-600 border-indigo-600 text-white'
+                  : 'border-neutral-900/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300'
+              }`}
+            >
+              {n}m
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">
+          How long to wait for the model to start responding before giving up. Raise this if you're on modest
+          hardware, running a large model, or sending long conversations -- once it starts streaming, a much
+          shorter 30s silence check takes over.
+        </p>
 
         <button
           onClick={saveAndTest}
