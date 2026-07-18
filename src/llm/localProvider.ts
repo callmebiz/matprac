@@ -10,48 +10,109 @@ import type {
 } from './types'
 import { LlmError } from './types'
 
+function stripThinking(text: string): string {
+  // Reasoning models (e.g. DeepSeek-R1 distills) think out loud in <think>...</think> before the
+  // real answer -- strip it so downstream parsing only ever sees the actual response.
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+}
+
+/**
+ * A fixed total-duration timeout can't tell "dead" apart from "slow but still producing tokens" --
+ * a long, detailed answer on a partially CPU-offloaded model can legitimately take minutes. So this
+ * streams the response and only times out on genuine *inactivity* (no bytes at all for a while),
+ * resetting the clock on every chunk received. Falls back to a plain non-streaming read if the
+ * server ignores `stream: true` (some minimal OpenAI-compatible servers do).
+ */
 async function chatCompletion(
   endpoint: string,
   model: string,
   messages: ChatMessage[],
-  { temperature = 0.4, timeoutMs = 60_000 }: { temperature?: number; timeoutMs?: number } = {},
+  { temperature = 0.4, idleTimeoutMs = 45_000 }: { temperature?: number; idleTimeoutMs?: number } = {},
 ): Promise<string> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let idleTimer: ReturnType<typeof setTimeout> | undefined
+  const resetIdleTimer = () => {
+    clearTimeout(idleTimer)
+    idleTimer = setTimeout(() => controller.abort(), idleTimeoutMs)
+  }
+  resetIdleTimer()
 
   let res: Response
   try {
     res = await fetch(`${endpoint.replace(/\/+$/, '')}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, temperature, messages }),
+      body: JSON.stringify({ model, temperature, stream: true, messages }),
       signal: controller.signal,
     })
   } catch (err) {
+    clearTimeout(idleTimer)
     if (controller.signal.aborted) {
-      throw new LlmError('The local model took too long to respond (timed out).', 'network')
+      throw new LlmError('The local model stopped responding (no output for a while).', 'network')
     }
     throw new LlmError(
       `Could not reach the local model at ${endpoint}. Make sure it's running and reachable from this device (check CORS / OLLAMA_ORIGINS if using Ollama).`,
       'network',
     )
-  } finally {
-    clearTimeout(timer)
   }
 
   if (!res.ok) {
+    clearTimeout(idleTimer)
     const body = await res.text().catch(() => '')
     throw new LlmError(`Local model server returned an error (HTTP ${res.status}). ${body.slice(0, 200)}`, 'http')
   }
 
-  const data = await res.json().catch(() => null)
-  const content: string | undefined = data?.choices?.[0]?.message?.content
-  if (!content) {
-    throw new LlmError('The local model returned an unexpected response shape.', 'parse')
+  // Some OpenAI-compatible servers ignore `stream: true` and just return one JSON blob -- handle that too.
+  if (!res.body || !(res.headers.get('content-type') ?? '').includes('text/event-stream')) {
+    clearTimeout(idleTimer)
+    const data = await res.json().catch(() => null)
+    const content: string | undefined = data?.choices?.[0]?.message?.content
+    if (!content) {
+      throw new LlmError('The local model returned an unexpected response shape.', 'parse')
+    }
+    return stripThinking(content)
   }
-  // Reasoning models (e.g. DeepSeek-R1 distills) think out loud in <think>...</think> before the
-  // real answer -- strip it so downstream parsing only ever sees the actual response.
-  return content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let full = ''
+  let buffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      resetIdleTimer()
+      buffer += decoder.decode(value, { stream: true })
+
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? '' // last line may be incomplete -- carry it into the next chunk
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data:')) continue
+        const payload = trimmed.slice(5).trim()
+        if (!payload || payload === '[DONE]') continue
+        try {
+          const delta: string | undefined = JSON.parse(payload)?.choices?.[0]?.delta?.content
+          if (delta) full += delta
+        } catch {
+          // Malformed SSE frame -- skip it and keep reading rather than aborting the whole response.
+        }
+      }
+    }
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new LlmError('The local model stopped responding (no output for a while).', 'network')
+    }
+    throw new LlmError('Lost connection to the local model mid-response.', 'network')
+  } finally {
+    clearTimeout(idleTimer)
+  }
+
+  if (!full.trim()) {
+    throw new LlmError('The local model returned an empty response.', 'parse')
+  }
+  return stripThinking(full)
 }
 
 /**
@@ -113,8 +174,7 @@ NOTE: if mismatch, a one-sentence explanation of the discrepancy (omit this line
 Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math.`
 
 export async function testLocalConnection(endpoint: string, model: string): Promise<void> {
-  // Generous timeout: the first request after starting a local model server often has to
-  // cold-load the model into memory/VRAM before it can respond, which can take a while.
+  // Idle-timeout (not total-duration) covers cold model loads gracefully -- see chatCompletion.
   const content = await chatCompletion(endpoint, model, [{ role: 'user', content: 'Reply with the single word: OK' }])
   if (!content.trim()) {
     throw new LlmError('The local model returned an empty response.', 'parse')
