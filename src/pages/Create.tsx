@@ -25,7 +25,8 @@ export function Create() {
   const [count, setCount] = useState<(typeof COUNT_OPTIONS)[number]>(5)
   const [topicId, setTopicId] = useState<TopicId>(topics[0].id)
   const [generating, setGenerating] = useState(false)
-  const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 })
+  const [phase, setPhase] = useState<'generating' | 'verifying'>('generating')
+  const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0, rejected: 0 })
   const [genError, setGenError] = useState('')
   const cancelRef = useRef(false)
 
@@ -54,17 +55,32 @@ export function Create() {
     setGenerating(true)
     setGenError('')
     cancelRef.current = false
-    setProgress({ done: 0, total: count, failed: 0 })
+    setProgress({ done: 0, total: count, failed: 0, rejected: 0 })
+
+    const provider = getLocalProvider(endpoint, model)
 
     for (let i = 0; i < count; i++) {
       if (cancelRef.current) break
       try {
+        setPhase('generating')
         const difficulty = (Math.floor(Math.random() * 3) + 1) as 1 | 2 | 3
-        const generated = await getLocalProvider(endpoint, model).generateQuestion({
+        const generated = await provider.generateQuestion({
           topicName: text,
           subtopics: [],
           difficulty,
         })
+
+        setPhase('verifying')
+        const verification = await provider.verifyQuestion({
+          prompt: generated.prompt,
+          answer: generated.answer,
+          explanation: generated.explanation,
+        })
+
+        if (verification.verdict === 'mismatch') {
+          setProgress((p) => ({ ...p, done: p.done + 1, rejected: p.rejected + 1 }))
+          continue
+        }
 
         const question: Question = {
           id: `gen-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
@@ -102,7 +118,9 @@ export function Create() {
     <div className="max-w-md mx-auto px-4 pt-8 pb-28">
       <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-1">Create questions</h1>
       <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6">
-        Ask your local model to write questions on anything, tagged for filtering later.
+        Ask your local model to write questions on anything, tagged for filtering later. Each one is
+        independently double-checked before it's saved — roughly doubles generation time in exchange for
+        catching wrong answers before they reach your bank.
       </p>
 
       {!aiTutorEnabled ? (
@@ -162,7 +180,7 @@ export function Create() {
                 disabled
                 className="w-full rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-semibold py-3.5 text-base opacity-60"
               >
-                Generating {progress.done + 1} of {progress.total}…
+                {phase === 'generating' ? 'Generating' : 'Verifying'} {progress.done + 1} of {progress.total}…
               </button>
               <button
                 onClick={() => {
@@ -185,8 +203,9 @@ export function Create() {
 
           {!generating && progress.total > 0 && (
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
-              {progress.done - progress.failed} of {progress.total} generated
-              {progress.failed > 0 ? ` · ${progress.failed} failed` : ''}
+              {progress.done - progress.failed - progress.rejected} of {progress.total} saved
+              {progress.rejected > 0 ? ` · ${progress.rejected} failed verification` : ''}
+              {progress.failed > 0 ? ` · ${progress.failed} failed to generate` : ''}
             </p>
           )}
           {genError && <p className="text-xs text-red-500 mt-2">{genError}</p>}

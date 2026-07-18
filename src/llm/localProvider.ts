@@ -5,6 +5,8 @@ import type {
   GradeAnswerParams,
   GradeResult,
   LlmProvider,
+  VerifyQuestionParams,
+  VerifyResult,
 } from './types'
 import { LlmError } from './types'
 
@@ -96,6 +98,20 @@ Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math
 
 const CHAT_SYSTEM_PROMPT = `You are a sharp, friendly tutor helping a data scientist with a master's in AI engineering go deeper on the math behind ML. You're mid-conversation about a specific flashcard they just answered. Answer their follow-up directly and technically -- don't repeat things already established in the conversation. Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math. Keep replies focused: a few sentences unless the question genuinely calls for more.`
 
+const VERIFY_SYSTEM_PROMPT = `You are a rigorous, skeptical checker reviewing a math/AI flashcard before it enters a permanent study bank. You'll be given a question and its proposed answer.
+
+First, solve the question yourself from scratch, briefly. Then compare your own result to the proposed answer.
+
+Judge mathematical and conceptual equivalence, not exact wording -- equivalent notations or phrasings that convey the same correct idea should be treated as matching. Only call it a mismatch if the proposed answer is actually wrong or misleading.
+
+Respond in EXACTLY this format and nothing else -- no markdown fences, no extra commentary before or after:
+
+REASONING: your own brief independent derivation (1-3 sentences)
+VERDICT: match or mismatch
+NOTE: if mismatch, a one-sentence explanation of the discrepancy (omit this line if match)
+
+Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math.`
+
 export async function testLocalConnection(endpoint: string, model: string): Promise<void> {
   // Generous timeout: the first request after starting a local model server often has to
   // cold-load the model into memory/VRAM before it can respond, which can take a while.
@@ -182,6 +198,40 @@ export class LocalProvider implements LlmProvider {
       .filter(Boolean)
 
     return { prompt, answer, explanation: explanation || undefined, tags: tags && tags.length > 0 ? tags : undefined }
+  }
+
+  async verifyQuestion({ prompt, answer, explanation }: VerifyQuestionParams): Promise<VerifyResult> {
+    const userPrompt = [
+      `Question: ${prompt}`,
+      `Proposed answer: ${answer}`,
+      explanation ? `Proposed explanation: ${explanation}` : null,
+      '',
+      'Verify this now.',
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    const content = await chatCompletion(
+      this.endpoint,
+      this.model,
+      [
+        { role: 'system', content: VERIFY_SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+      { temperature: 0.2 },
+    )
+
+    const verdictField = extractField(content, 'VERDICT', ['NOTE'])
+    const noteField = extractField(content, 'NOTE', [])
+
+    // No parseable verdict means the verifier itself misbehaved, not that the answer is wrong --
+    // fail open rather than reject a possibly-good question over a formatting hiccup.
+    if (verdictField === undefined) {
+      return { verdict: 'match' }
+    }
+
+    const verdict = verdictField.toLowerCase().includes('mismatch') ? 'mismatch' : 'match'
+    return { verdict, note: verdict === 'mismatch' ? noteField : undefined }
   }
 
   async chat(messages: ChatMessage[]): Promise<string> {

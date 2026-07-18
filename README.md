@@ -16,7 +16,7 @@ percentage tricks to attention math and LoRA fine-tuning.
 
 - Flip-card review: see the prompt, reveal the answer + explanation (LaTeX rendered via KaTeX), self-grade "Got it" / "Missed it", or say "I don't know" to skip straight to the rundown
 - **AI tutor (optional):** type a free-form answer and have a self-hosted local model grade it, then keep going in a real back-and-forth conversation about the question — see [AI tutor setup](#ai-tutor-setup) below
-- **Create tab:** ask the local model to write N questions on anything ("attention mechanisms in transformers", "confidence intervals"), auto-tagged for filtering, saved to a growing personal question bank you can filter by tag and practice from directly
+- **Create tab:** ask the local model to write N questions on anything ("attention mechanisms in transformers", "confidence intervals"), auto-tagged for filtering, saved to a growing personal question bank you can filter by tag and practice from directly. Each generated question is independently re-derived and checked by a second call before it's saved — a small prompt chain that catches wrong answers before they reach your bank, at the cost of roughly doubling generation time
 - Adaptive session queue: weights unseen, weak, and stale cards higher (SRS-lite)
 - Stats dashboard: per-topic accuracy, cards mastered, practice-day streak, weakest subtopics
 - Installable PWA with offline support (works on the home screen on iOS/Android)

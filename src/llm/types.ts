@@ -31,6 +31,17 @@ export interface ChatMessage {
   content: string
 }
 
+export interface VerifyQuestionParams {
+  prompt: string
+  answer: string
+  explanation?: string
+}
+
+export interface VerifyResult {
+  verdict: 'match' | 'mismatch'
+  note?: string
+}
+
 export class LlmError extends Error {
   readonly cause?: 'network' | 'http' | 'parse'
 
@@ -41,9 +52,10 @@ export class LlmError extends Error {
   }
 }
 
-/** Anything that can grade a typed answer, generate new questions, and hold a free-form conversation. Local today; a Claude proxy can implement the same shape later. */
+/** Anything that can grade a typed answer, generate new questions, verify them, and hold a free-form conversation. Local today; a Claude proxy can implement the same shape later. */
 export interface LlmProvider {
   gradeAnswer(params: GradeAnswerParams): Promise<GradeResult>
   generateQuestion(params: GenerateQuestionParams): Promise<GeneratedQuestion>
+  verifyQuestion(params: VerifyQuestionParams): Promise<VerifyResult>
   chat(messages: ChatMessage[]): Promise<string>
 }
