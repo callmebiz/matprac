@@ -1,4 +1,5 @@
 import type {
+  ChatMessage,
   GenerateQuestionParams,
   GeneratedQuestion,
   GradeAnswerParams,
@@ -6,11 +7,6 @@ import type {
   LlmProvider,
 } from './types'
 import { LlmError } from './types'
-
-interface ChatMessage {
-  role: 'system' | 'user'
-  content: string
-}
 
 async function chatCompletion(
   endpoint: string,
@@ -81,6 +77,8 @@ Respond with ONLY a raw JSON object, no markdown fences, no commentary, in this 
 
 Use LaTeX ($...$ inline, $$...$$ block) for any math. Target difficulty ${difficulty} of 3. Prefer these subtopics if relevant: ${subtopics.join(', ')}. Make it precise and exam-style; avoid restating a generic textbook definition verbatim.`
 
+const CHAT_SYSTEM_PROMPT = `You are a sharp, friendly tutor helping a data scientist with a master's in AI engineering go deeper on the math behind ML. You're mid-conversation about a specific flashcard they just answered. Answer their follow-up directly and technically -- don't repeat things already established in the conversation. Use LaTeX ($...$ inline, $$...$$ block) for any math. Keep replies focused: a few sentences unless the question genuinely calls for more.`
+
 export async function testLocalConnection(endpoint: string, model: string): Promise<void> {
   // Generous timeout: the first request after starting a local model server often has to
   // cold-load the model into memory/VRAM before it can respond, which can take a while.
@@ -142,5 +140,13 @@ export class LocalProvider implements LlmProvider {
       throw new LlmError('The model response was missing a prompt or answer.', 'parse')
     }
     return { prompt: parsed.prompt, answer: parsed.answer, explanation: parsed.explanation }
+  }
+
+  async chat(messages: ChatMessage[]): Promise<string> {
+    const hasSystemPrompt = messages.some((m) => m.role === 'system')
+    const fullMessages = hasSystemPrompt ? messages : [{ role: 'system' as const, content: CHAT_SYSTEM_PROMPT }, ...messages]
+
+    const content = await chatCompletion(this.endpoint, this.model, fullMessages, { temperature: 0.6 })
+    return content.trim()
   }
 }

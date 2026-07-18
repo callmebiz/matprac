@@ -6,6 +6,7 @@ import { topicById } from '../data/topics'
 import { useSettingsStore, isAiTutorReady } from '../store/useSettingsStore'
 import { getLocalProvider, LlmError } from '../llm'
 import type { GradeResult } from '../llm'
+import { ConversationThread } from './ConversationThread'
 
 interface FlashcardProps {
   question: Question
@@ -129,6 +130,16 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
               </>
             )}
           </div>
+        )}
+
+        {state === 'graded' && gradeResult && (
+          <ConversationThread
+            question={question}
+            typedAnswer={typedAnswer}
+            gradeResult={gradeResult}
+            endpoint={endpoint}
+            model={model}
+          />
         )}
 
         {state === 'error' && (

@@ -25,6 +25,11 @@ export interface GenerateQuestionParams {
   difficulty: 1 | 2 | 3
 }
 
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
 export class LlmError extends Error {
   readonly cause?: 'network' | 'http' | 'parse'
 
@@ -35,8 +40,9 @@ export class LlmError extends Error {
   }
 }
 
-/** Anything that can grade a typed answer and generate new questions. Local today; a Claude proxy can implement the same shape later. */
+/** Anything that can grade a typed answer, generate new questions, and hold a free-form conversation. Local today; a Claude proxy can implement the same shape later. */
 export interface LlmProvider {
   gradeAnswer(params: GradeAnswerParams): Promise<GradeResult>
   generateQuestion(params: GenerateQuestionParams): Promise<GeneratedQuestion>
+  chat(messages: ChatMessage[]): Promise<string>
 }
