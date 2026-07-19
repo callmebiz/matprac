@@ -16,6 +16,7 @@ percentage tricks to attention math and LoRA fine-tuning.
 
 - Flip-card review: see the prompt, reveal the answer + explanation (LaTeX rendered via KaTeX), self-grade "Got it" / "Missed it", or say "I don't know" to skip straight to the rundown — the AI chat is still available afterward either way
 - **AI tutor (optional):** type a free-form answer and have a self-hosted local model grade it, then keep going in a real back-and-forth conversation about the question — see [AI tutor setup](#ai-tutor-setup) below. Chat replies render full markdown (bold, lists, code, tables) plus LaTeX. Any message can be edited and resent, and any reply can be regenerated — each creates a new branch, navigable via a `‹ i/n ›` control per message, the same edit/regenerate/branch model as Claude and ChatGPT
+- **Chat tab:** a standalone, general-purpose chat with the same local model, not tied to any flashcard — ask it to explain a concept, work through a derivation, or go on a tangent. Keeps multiple named conversations (auto-titled from your first message), persisted locally, with the same markdown/LaTeX rendering and edit/regenerate/branching as the per-flashcard thread
 - **Create tab:** ask the local model to write N questions on anything ("attention mechanisms in transformers", "confidence intervals"), auto-tagged for filtering. The model also decides where each question belongs, reusing an existing category or creating a new one on the fly — nothing is filed manually. Saved to a growing personal question bank you can filter by tag and practice from directly. Each generated question is independently re-derived and checked by a second call before it's saved — a small prompt chain that catches wrong answers before they reach your bank, at the cost of roughly doubling generation time. Generation holds a screen wake lock where supported, so the screen won't auto-lock mid-batch -- but there's no way for a PWA to keep running once you switch to a different app or lock the screen manually, so stay on the tab for a batch to complete
 - Adaptive session queue: weights unseen, weak, and stale cards higher (SRS-lite)
 - Stats dashboard: per-topic accuracy, cards mastered, practice-day streak, weakest subtopics
@@ -71,4 +72,5 @@ Question banks live in `src/data/questions/*.ts`, one file per topic. Each `Ques
 
 AI-generated questions (via the Create tab) are stored separately from this curated bank, in their own
 `localStorage` key, keyed by id for fast lookup — so a growing personal question bank never bloats the
-stats/settings writes that happen on every practice attempt.
+stats/settings writes that happen on every practice attempt. Chat tab sessions get their own key too,
+for the same reason.

@@ -4,6 +4,7 @@ import { Practice } from './pages/Practice'
 import { Stats } from './pages/Stats'
 import { Settings } from './pages/Settings'
 import { Create } from './pages/Create'
+import { Chat } from './pages/Chat'
 import { BottomNav } from './components/BottomNav'
 
 function Shell() {
@@ -18,6 +19,7 @@ function Shell() {
         <Route path="/stats" element={<Stats />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/create" element={<Create />} />
+        <Route path="/chat" element={<Chat />} />
       </Routes>
       {showNav && <BottomNav />}
     </div>

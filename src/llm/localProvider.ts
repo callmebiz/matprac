@@ -185,6 +185,8 @@ For CATEGORY: this app files every question under a broad subject category (e.g.
 
 const CHAT_SYSTEM_PROMPT = `You are a sharp, friendly tutor helping a data scientist with a master's in AI engineering go deeper on the math behind ML. You're mid-conversation about a specific flashcard they just answered. Answer their follow-up directly and technically -- don't repeat things already established in the conversation. Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math. Keep replies focused: a few sentences unless the question genuinely calls for more.`
 
+export const STANDALONE_CHAT_SYSTEM_PROMPT = `You are a sharp, friendly tutor for a data scientist with a master's in AI engineering, staying sharp on the math behind data science and ML -- percentages and mental math, linear algebra, probability and statistics, calculus, optimization, and ML theory. This is an open-ended conversation, not tied to a specific flashcard -- they might ask you to explain a concept, work through a derivation, quiz them, debug their intuition, or go on a tangent into related engineering topics (e.g. SQL, systems, tooling). Answer directly and technically, matching their level; don't pad with disclaimers or generic textbook preambles. Use LaTeX ($...$ inline, $$...$$ block -- never \\( \\) or \\[ \\]) for any math. Use markdown (lists, code blocks, bold) where it genuinely helps readability.`
+
 const VERIFY_SYSTEM_PROMPT = `You are a rigorous, skeptical checker reviewing a math/AI flashcard before it enters a permanent study bank. You'll be given a question and its proposed answer.
 
 First, solve the question yourself from scratch, briefly. Then compare your own result to the proposed answer.
