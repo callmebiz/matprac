@@ -1,13 +1,13 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { QuestionProgress, StatsState } from '../types'
+import { sm2Update } from '../lib/srs'
+import { emptyProgress } from '../lib/progress'
+
+export { getQuestionProgress } from '../lib/progress'
 
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10)
-}
-
-function emptyProgress(): QuestionProgress {
-  return { seen: 0, correct: 0, incorrect: 0, lastSeen: null, streak: 0 }
 }
 
 interface StatsStore extends StatsState {
@@ -24,12 +24,14 @@ export const useStatsStore = create<StatsStore>()(
       recordAttempt: (questionId, correct) => {
         const state = get()
         const prev = state.progress[questionId] ?? emptyProgress()
+        const now = Date.now()
         const next: QuestionProgress = {
           seen: prev.seen + 1,
           correct: prev.correct + (correct ? 1 : 0),
           incorrect: prev.incorrect + (correct ? 0 : 1),
-          lastSeen: Date.now(),
+          lastSeen: now,
           streak: correct ? prev.streak + 1 : 0,
+          ...sm2Update(prev, correct, now),
         }
         const today = todayKey()
         const practiceDays = state.practiceDays.includes(today)
@@ -47,7 +49,3 @@ export const useStatsStore = create<StatsStore>()(
     { name: 'matprac-stats' },
   ),
 )
-
-export function getQuestionProgress(progress: Record<string, QuestionProgress>, questionId: string): QuestionProgress {
-  return progress[questionId] ?? emptyProgress()
-}

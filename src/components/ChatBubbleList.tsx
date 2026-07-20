@@ -9,6 +9,9 @@ interface ChatBubbleListProps {
   onEdit: (node: ChatNode, newText: string) => void
   onRegenerate: (assistantNodeId: string) => void
   onSwitchBranch: (key: string, index: number) => void
+  /** When provided, assistant messages get a "save as flashcard" action. */
+  onSaveAsFlashcard?: (node: ChatNode) => void
+  savedNodeIds?: Set<string>
 }
 
 /**
@@ -16,7 +19,7 @@ interface ChatBubbleListProps {
  * (assistant) actions and a ‹ i/n › nav for any message that has sibling versions -- shared between
  * the per-flashcard follow-up thread and the standalone Chat tab so both behave identically.
  */
-export function ChatBubbleList({ tree, loading, onEdit, onRegenerate, onSwitchBranch }: ChatBubbleListProps) {
+export function ChatBubbleList({ tree, loading, onEdit, onRegenerate, onSwitchBranch, onSaveAsFlashcard, savedNodeIds }: ChatBubbleListProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState('')
 
@@ -81,13 +84,24 @@ export function ChatBubbleList({ tree, loading, onEdit, onRegenerate, onSwitchBr
                       Edit
                     </button>
                   ) : (
-                    <button
-                      onClick={() => onRegenerate(node.id)}
-                      disabled={loading}
-                      className="text-[11px] font-medium text-neutral-400 dark:text-neutral-500 disabled:opacity-40"
-                    >
-                      ↻ Regenerate
-                    </button>
+                    <>
+                      <button
+                        onClick={() => onRegenerate(node.id)}
+                        disabled={loading}
+                        className="text-[11px] font-medium text-neutral-400 dark:text-neutral-500 disabled:opacity-40"
+                      >
+                        ↻ Regenerate
+                      </button>
+                      {onSaveAsFlashcard && (
+                        <button
+                          onClick={() => onSaveAsFlashcard(node)}
+                          disabled={loading || savedNodeIds?.has(node.id)}
+                          className="text-[11px] font-medium text-neutral-400 dark:text-neutral-500 disabled:opacity-40"
+                        >
+                          {savedNodeIds?.has(node.id) ? '✓ Saved' : '+ Flashcard'}
+                        </button>
+                      )}
+                    </>
                   )}
                   {siblings && (
                     <div className="flex items-center gap-1 text-[11px] text-neutral-400 dark:text-neutral-500">

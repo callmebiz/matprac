@@ -1,5 +1,6 @@
 import type { Question, QuestionProgress, TopicId } from '../types'
-import { getQuestionProgress } from '../store/useStatsStore'
+import { getQuestionProgress } from './progress'
+import { isDue } from './srs'
 
 export interface AccuracySummary {
   seen: number
@@ -28,6 +29,11 @@ export function topicAccuracy(
   progress: Record<string, QuestionProgress>,
 ): AccuracySummary {
   return summarize(questionsByTopic.get(topicId) ?? [], progress)
+}
+
+/** How many cards are unseen or past their SM-2 due date right now. */
+export function dueCount(allQuestions: Question[], progress: Record<string, QuestionProgress>): number {
+  return allQuestions.filter((q) => isDue(q, progress)).length
 }
 
 export function cardsMastered(allQuestions: Question[], progress: Record<string, QuestionProgress>): number {

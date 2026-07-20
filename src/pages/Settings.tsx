@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { testLocalConnection, LlmError } from '../llm'
+import { exportBackup, importBackup } from '../lib/backup'
 
 type TestStatus = { state: 'idle' } | { state: 'testing' } | { state: 'ok' } | { state: 'error'; message: string }
 
@@ -12,6 +13,32 @@ export function Settings() {
   const [draftEndpoint, setDraftEndpoint] = useState(endpoint)
   const [draftModel, setDraftModel] = useState(model)
   const [test, setTest] = useState<TestStatus>({ state: 'idle' })
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null)
+  const [importError, setImportError] = useState('')
+  const [importDone, setImportDone] = useState(false)
+
+  function handleFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setImportError('')
+    setPendingImportFile(file)
+  }
+
+  async function confirmImport() {
+    if (!pendingImportFile) return
+    try {
+      await importBackup(pendingImportFile)
+      setPendingImportFile(null)
+      setImportDone(true)
+      setTimeout(() => window.location.reload(), 1200)
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Could not read that file.')
+      setPendingImportFile(null)
+    }
+  }
 
   function saveAndTest() {
     setEndpoint(draftEndpoint)
@@ -134,6 +161,53 @@ export function Settings() {
             over HTTPS (e.g. Tailscale Serve) or run the model on the same device as the browser.
           </p>
         </div>
+      </section>
+
+      <section className="mb-8">
+        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-1">Backup</h2>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+          Stats, settings, generated questions, and chat history all live only in this browser — no account, no
+          server. Export a backup before switching phones or clearing site data.
+        </p>
+
+        {pendingImportFile ? (
+          <div className="rounded-2xl bg-amber-500/10 border border-amber-500/30 p-4">
+            <p className="text-sm text-amber-700 dark:text-amber-400 mb-3">
+              This will overwrite your current stats, settings, questions, and chats with the contents of{' '}
+              <strong>{pendingImportFile.name}</strong>. This can't be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setPendingImportFile(null)}
+                className="flex-1 rounded-xl border border-neutral-900/10 dark:border-white/10 font-semibold py-2.5 text-sm"
+              >
+                Cancel
+              </button>
+              <button onClick={confirmImport} className="flex-1 rounded-xl bg-amber-500 text-white font-semibold py-2.5 text-sm">
+                Overwrite &amp; restore
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex gap-3">
+            <button
+              onClick={exportBackup}
+              className="flex-1 rounded-2xl border border-neutral-900/10 dark:border-white/10 font-semibold py-3 text-sm text-neutral-700 dark:text-neutral-300"
+            >
+              Export backup
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex-1 rounded-2xl border border-neutral-900/10 dark:border-white/10 font-semibold py-3 text-sm text-neutral-700 dark:text-neutral-300"
+            >
+              Import backup
+            </button>
+            <input ref={fileInputRef} type="file" accept="application/json" className="hidden" onChange={handleFileChosen} />
+          </div>
+        )}
+
+        {importDone && <p className="text-sm text-emerald-500 font-medium mt-3">Restored — reloading…</p>}
+        {importError && <p className="text-sm text-red-500 mt-3">{importError}</p>}
       </section>
 
       <section className="opacity-50">

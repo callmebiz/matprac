@@ -36,6 +36,10 @@ export interface QuestionProgress {
   incorrect: number
   lastSeen: number | null
   streak: number
+  /** SM-2 scheduling state -- optional since progress recorded before this existed won't have it yet. */
+  easeFactor?: number
+  intervalDays?: number
+  dueAt?: number | null
 }
 
 export interface StatsState {

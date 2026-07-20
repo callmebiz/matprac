@@ -1,10 +1,16 @@
 import { useMemo, useState } from 'react'
 import { useSettingsStore, isAiTutorReady } from '../store/useSettingsStore'
 import { useChatStore } from '../store/useChatStore'
+import { useQuestionBankStore } from '../store/useQuestionBankStore'
 import { getLocalProvider, LlmError, STANDALONE_CHAT_SYSTEM_PROMPT } from '../llm'
 import { ChatBubbleList } from '../components/ChatBubbleList'
 import { appendNode, setActiveIndex, activePath, pathTo } from '../lib/chatTree'
 import type { ChatTree, ChatNode } from '../lib/chatTree'
+import { slugify } from '../lib/tags'
+import type { Question } from '../types'
+
+const SAVED_TOPIC_ID = 'saved-from-chat'
+const SAVED_TOPIC_LABEL = 'Saved from Chat'
 
 function timeAgo(ts: number): string {
   const mins = Math.round((Date.now() - ts) / 60_000)
@@ -26,11 +32,13 @@ export function Chat() {
   const deleteSession = useChatStore((s) => s.deleteSession)
   const setSessionTree = useChatStore((s) => s.setSessionTree)
   const setSessionTitle = useChatStore((s) => s.setSessionTitle)
+  const addQuestions = useQuestionBankStore((s) => s.addQuestions)
 
   const [activeId, setActiveId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [savedNodeIds, setSavedNodeIds] = useState<Set<string>>(new Set())
 
   const sessionList = useMemo(() => Object.values(sessions).sort((a, b) => b.updatedAt - a.updatedAt), [sessions])
   const active = activeId ? sessions[activeId] : null
@@ -81,6 +89,29 @@ export function Chat() {
   function switchBranch(key: string, index: number) {
     if (!active || loading) return
     setSessionTree(active.id, setActiveIndex(active.tree, key, index))
+  }
+
+  // A reliable, instant fallback bucket -- no extra LLM call (and its failure modes) needed just to
+  // file a card the model already wrote. The user message becomes the prompt, the reply the answer.
+  function saveAsFlashcard(node: ChatNode) {
+    if (!active) return
+    const parent = node.parentId ? active.tree.nodes[node.parentId] : null
+    const promptText = parent && parent.message.role === 'user' ? parent.message.content : active.title
+
+    const question: Question = {
+      id: `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      topicId: SAVED_TOPIC_ID,
+      topicLabel: SAVED_TOPIC_LABEL,
+      subtopic: promptText.slice(0, 60),
+      difficulty: 2,
+      prompt: promptText,
+      answer: node.message.content,
+      tags: [slugify(promptText.split(' ').slice(0, 5).join(' ')) || SAVED_TOPIC_ID],
+      source: 'generated',
+      createdAt: Date.now(),
+    }
+    addQuestions([question])
+    setSavedNodeIds((prev) => new Set(prev).add(node.id))
   }
 
   if (!aiTutorEnabled) {
@@ -173,7 +204,15 @@ export function Chat() {
         </p>
       ) : (
         <div className="mb-4">
-          <ChatBubbleList tree={active.tree} loading={loading} onEdit={handleEdit} onRegenerate={regenerate} onSwitchBranch={switchBranch} />
+          <ChatBubbleList
+            tree={active.tree}
+            loading={loading}
+            onEdit={handleEdit}
+            onRegenerate={regenerate}
+            onSwitchBranch={switchBranch}
+            onSaveAsFlashcard={saveAsFlashcard}
+            savedNodeIds={savedNodeIds}
+          />
         </div>
       )}
 

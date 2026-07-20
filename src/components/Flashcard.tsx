@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Question } from '../types'
 import { MathText } from './MathText'
 import { getTopicTheme } from '../lib/theme'
@@ -23,12 +23,20 @@ const verdictStyle: Record<GradeResult['verdict'], { label: string; className: s
   incorrect: { label: 'Not quite', className: 'text-red-500 bg-red-500/10 border-red-500/30' },
 }
 
+const SWIPE_THRESHOLD = 80
+
+function vibrate(pattern: number | number[]) {
+  navigator.vibrate?.(pattern)
+}
+
 export function Flashcard({ question, onGrade }: FlashcardProps) {
   const [state, setState] = useState<CardState>('question')
   const [typedAnswer, setTypedAnswer] = useState('')
   const [gradeResult, setGradeResult] = useState<GradeResult | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
   const [pendingFollowUp, setPendingFollowUp] = useState<string | null>(null)
+  const [dragX, setDragX] = useState(0)
+  const dragStart = useRef<{ x: number; y: number } | null>(null)
 
   const aiTutorEnabled = useSettingsStore(isAiTutorReady)
   const endpoint = useSettingsStore((s) => s.endpoint)
@@ -39,11 +47,35 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
   const topicLabel = questionTopicLabel(question)
 
   function grade(correct: boolean) {
+    vibrate(15)
     onGrade(correct)
     setState('question')
     setTypedAnswer('')
     setGradeResult(null)
     setPendingFollowUp(null)
+    setDragX(0)
+  }
+
+  // Swipe-to-grade, active only once the answer/grade buttons are showing. Tracks both axes so a
+  // mostly-vertical drag (page scroll) never gets hijacked into a horizontal card-swipe.
+  function handleTouchStart(e: React.TouchEvent) {
+    if (!showAnswerBlock) return
+    const t = e.touches[0]
+    dragStart.current = { x: t.clientX, y: t.clientY }
+  }
+  function handleTouchMove(e: React.TouchEvent) {
+    if (!dragStart.current) return
+    const t = e.touches[0]
+    const dx = t.clientX - dragStart.current.x
+    const dy = t.clientY - dragStart.current.y
+    if (Math.abs(dx) > Math.abs(dy)) setDragX(dx)
+  }
+  function handleTouchEnd() {
+    if (!dragStart.current) return
+    dragStart.current = null
+    if (dragX > SWIPE_THRESHOLD) grade(true)
+    else if (dragX < -SWIPE_THRESHOLD) grade(false)
+    else setDragX(0)
   }
 
   // Skipping straight to the answer shouldn't also lock you out of the chat -- seed a minimal,
@@ -76,7 +108,28 @@ export function Flashcard({ question, onGrade }: FlashcardProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className={`rounded-3xl border ${theme.border} ${theme.bgSoft} p-6 min-h-[280px] flex flex-col`}>
+      <div
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{
+          transform: `translateX(${dragX}px) rotate(${dragX / 24}deg)`,
+          transition: dragStart.current ? 'none' : 'transform 0.25s ease',
+        }}
+        className={`relative rounded-3xl border ${theme.border} ${theme.bgSoft} p-6 min-h-[280px] flex flex-col`}
+      >
+        {showAnswerBlock && dragX !== 0 && (
+          <div
+            className={`pointer-events-none absolute inset-0 rounded-3xl flex items-center justify-center text-lg font-bold ${
+              dragX > 0 ? 'text-emerald-500' : 'text-red-500'
+            }`}
+            style={{ opacity: Math.min(Math.abs(dragX) / SWIPE_THRESHOLD, 1) * 0.85 }}
+          >
+            <div className={`rounded-2xl px-6 py-3 ${dragX > 0 ? 'bg-emerald-500/15' : 'bg-red-500/15'}`}>
+              {dragX > 0 ? 'Got it' : 'Missed it'}
+            </div>
+          </div>
+        )}
         <div className="flex items-start justify-between gap-3 mb-4">
           <span className={`text-xs font-semibold uppercase tracking-wide ${theme.text}`}>
             {topicLabel} · {question.subtopic}

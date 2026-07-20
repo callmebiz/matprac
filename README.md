@@ -18,8 +18,21 @@ percentage tricks to attention math and LoRA fine-tuning.
 - **AI tutor (optional):** type a free-form answer and have a self-hosted local model grade it, then keep going in a real back-and-forth conversation about the question — see [AI tutor setup](#ai-tutor-setup) below. Chat replies render full markdown (bold, lists, code, tables) plus LaTeX. Any message can be edited and resent, and any reply can be regenerated — each creates a new branch, navigable via a `‹ i/n ›` control per message, the same edit/regenerate/branch model as Claude and ChatGPT
 - **Chat tab:** a standalone, general-purpose chat with the same local model, not tied to any flashcard — ask it to explain a concept, work through a derivation, or go on a tangent. Keeps multiple named conversations (auto-titled from your first message), persisted locally, with the same markdown/LaTeX rendering and edit/regenerate/branching as the per-flashcard thread
 - **Create tab:** ask the local model to write N questions on anything ("attention mechanisms in transformers", "confidence intervals"), auto-tagged for filtering. The model also decides where each question belongs, reusing an existing category or creating a new one on the fly — nothing is filed manually. Saved to a growing personal question bank you can filter by tag and practice from directly. Each generated question is independently re-derived and checked by a second call before it's saved — a small prompt chain that catches wrong answers before they reach your bank, at the cost of roughly doubling generation time. Generation holds a screen wake lock where supported, so the screen won't auto-lock mid-batch -- but there's no way for a PWA to keep running once you switch to a different app or lock the screen manually, so stay on the tab for a batch to complete
-- Adaptive session queue: weights unseen, weak, and stale cards higher (SRS-lite)
-- Stats dashboard: per-topic accuracy, cards mastered, practice-day streak, weakest subtopics
+- **Real spaced repetition:** grading a card runs a simplified binary SM-2 scheduler (ease factor +
+  interval, reset on a miss, grown on a hit) rather than just shuffling everything — a session prioritizes
+  what's actually due (unseen or overdue), only backfilling from not-yet-due cards if there aren't enough
+  due ones to fill it. Swipe a card right/left (or tap Got it / Missed it) to grade — swiping gives a
+  live drag-and-tint follow, plus a short haptic buzz on devices that support it
+- **Weak areas, closed loop:** Stats surfaces your weakest subtopics, each with a one-tap **Practice**
+  (instant session from your existing cards on it, no AI call, can't fail) and **Generate more** (jumps to
+  the Create tab with that subtopic pre-filled, for fresh AI-authored questions on it)
+- **Save a chat reply as a flashcard:** any assistant message in the Chat tab (or a flashcard's follow-up
+  thread) can be turned into a permanent card with one tap — filed under a stable "Saved from Chat"
+  category, no extra LLM call needed
+- Stats dashboard: per-topic accuracy, cards mastered, due-for-review count, practice-day streak, weakest subtopics
+- **Backup:** export everything (stats, settings, question bank, chat history) to a single JSON file from
+  Settings, and import it back — this is a local-only app with no account or server, so a backup is the
+  only thing standing between you and losing it all to a cleared browser cache
 - Installable PWA with offline support (works on the home screen on iOS/Android)
 - All progress and settings stored locally (`localStorage`), no account or backend required
 

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { topics, topicById, questionTopicLabel } from '../data/topics'
 import { getTopicTheme } from '../lib/theme'
 import { slugify, questionTags } from '../lib/tags'
@@ -35,6 +35,7 @@ function resolveCategory(
 
 export function Create() {
   const navigate = useNavigate()
+  const location = useLocation()
   const aiTutorEnabled = useSettingsStore(isAiTutorReady)
   const endpoint = useSettingsStore((s) => s.endpoint)
   const model = useSettingsStore((s) => s.model)
@@ -44,7 +45,7 @@ export function Create() {
   const addQuestions = useQuestionBankStore((s) => s.addQuestions)
   const removeQuestion = useQuestionBankStore((s) => s.removeQuestion)
 
-  const [request, setRequest] = useState('')
+  const [request, setRequest] = useState(() => (location.state as { prefill?: string } | null)?.prefill ?? '')
   const [count, setCount] = useState<(typeof COUNT_OPTIONS)[number]>(5)
   const [generating, setGenerating] = useState(false)
   const [phase, setPhase] = useState<'generating' | 'verifying'>('generating')
